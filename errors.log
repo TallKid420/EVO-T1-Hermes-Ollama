@@ -1,0 +1,23 @@
+
+--- 2026-04-12T18:03:14.023785 ---
+Traceback (most recent call last):
+  File "C:\Users\EvanN\downloads\Hermes 2.0\Hermes\hermes_operator.py", line 292, in plan
+    content, calls, usage = _call_llm_stream(messages)
+                            ~~~~~~~~~~~~~~~~^^^^^^^^^^
+  File "C:\Users\EvanN\downloads\Hermes 2.0\Hermes\hermes_operator.py", line 115, in _call_llm_stream
+    stream = _client.chat.completions.create(
+        model=_model,
+    ...<5 lines>...
+        stream_options={"include_usage": True},
+    )
+TypeError: Completions.create() got an unexpected keyword argument 'stream_options'
+
+The above exception was the direct cause of the following exception:
+
+Traceback (most recent call last):
+  File "C:\Users\EvanN\downloads\Hermes 2.0\Hermes\chat.py", line 166, in run_chat
+    operator_module.plan(msg)
+    ~~~~~~~~~~~~~~~~~~~~^^^^^
+  File "C:\Users\EvanN\downloads\Hermes 2.0\Hermes\hermes_operator.py", line 294, in plan
+    raise RuntimeError(f"LLM call failed (turn {turn}): {e}") from e
+RuntimeError: LLM call failed (turn 1): Completions.create() got an unexpected keyword argument 'stream_options'
