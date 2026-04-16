@@ -15,9 +15,6 @@ from rich.panel import Panel
 from rich.table import Table
 from rich.text import Text
 
-# Defaults
-defualt_model = "openai/gpt-oss-120b"
-defualt_rpm = "20"
 APP_VERSION = "2.0"
 ENV_PATH = os.path.join(os.path.dirname(__file__), ".env")
 
@@ -32,11 +29,18 @@ log = logging.getLogger("rich")
 # Main menu
 ACTIONS = [
     ("Chat", "Start a conversation with Hermes", None),
-    ("Settings", "Configure Groq and operator options", None),
+    ("Settings", "Configure provider and operator options", None),
     ("Session", "View session stats and recent history", None),
     ("About", "See shortcuts and available features", None),
     ("Exit", "Quit the application", lambda: sys.exit(0)),
 ]
+
+
+def _current_defaults() -> tuple[str, str]:
+    settings = settings_store.load_settings(ENV_PATH)
+    provider = settings_store.get_provider(settings)
+    defaults = settings_store.get_provider_defaults(provider)
+    return defaults["default_model"], defaults["default_rpm"]
 
 
 def read_key():
@@ -61,9 +65,10 @@ def render_menu(sel):
     """Render the main action selector."""
     console.clear()
     settings = settings_store.load_settings(ENV_PATH)
+    runtime = settings_store.get_provider_runtime_summary(settings)
     subtitle = (
-        f"v{APP_VERSION}   model: {settings.get('GROQ_MODEL', defualt_model)}   "
-        f"rpm: {settings.get('GROQ_RPM_LIMIT', defualt_rpm)}"
+        f"v{APP_VERSION}   provider: {runtime['provider']}   "
+        f"model: {runtime['model']}   rpm: {runtime['rpm']}"
     )
     render_header("HERMES", subtitle)
 
@@ -117,6 +122,7 @@ def run_about():
 
 
 def run_chat_screen():
+    default_model, default_rpm = _current_defaults()
     chat.run_chat(
         console,
         init,
@@ -125,12 +131,13 @@ def run_chat_screen():
         read_key,
         render_header,
         os.path.dirname(__file__),
-        defualt_model,
-        defualt_rpm,
+        default_model,
+        default_rpm,
     )
 
 
 def run_settings_screen():
+    default_model, default_rpm = _current_defaults()
     settings_store.run_settings(
         console,
         read_key,
@@ -138,8 +145,8 @@ def run_settings_screen():
         ENV_PATH,
         operator,
         session_store.SESSION,
-        defualt_model,
-        defualt_rpm,
+        default_model,
+        default_rpm,
     )
 
 
@@ -173,6 +180,9 @@ def init(mode: str = None):
         for err in validation_errors:
             log.warning(f"Settings validation: {err}")
 
+        provider = settings_store.get_provider(validated_settings)
+        defaults = settings_store.get_provider_defaults(provider)
+
         # Seed process env with validated values so operator.setup() reads a safe config.
         for key, value in validated_settings.items():
             os.environ[key] = value
@@ -183,16 +193,15 @@ def init(mode: str = None):
             log.critical(f"Error: {exc}")
             raise SystemExit(1)
 
-        if os.getenv("GROQ_MODEL") is None:
-            log.warning(f"Model not set in .env, using defualt {defualt_model}")
-        if os.getenv("GROQ_RPM_LIMIT") is None:
-            log.warning(f"rpm not set in .env, using defualt {defualt_rpm}")
+        if os.getenv(defaults["model_key"]) is None:
+            log.warning(f"Model not set in .env, using default {defaults['default_model']}")
+        if os.getenv(defaults["rpm_key"]) is None:
+            log.warning(f"rpm not set in .env, using default {defaults['default_rpm']}")
 
-        log.info("API key retrived")
+        log.info(f"Provider configured: {state.get('provider', provider)}")
         log.info(f"Operator ready - model: {state['model']}")
-        log.info(f"Compound routing model: {state['compound_model']} (via compound_* tools)")
         session_store.init_transcript(os.path.dirname(__file__))
-        session_store.SESSION["status"] = f"Ready ({state['model']})"
+        session_store.SESSION["status"] = f"Ready ({state.get('provider', provider)}: {state['model']})"
 
 
 def main():

@@ -1,23 +1,254 @@
 
---- 2026-04-12T18:03:14.023785 ---
+--- 2026-04-15T16:06:28.566690 ---
 Traceback (most recent call last):
-  File "C:\Users\EvanN\downloads\Hermes 2.0\Hermes\hermes_operator.py", line 292, in plan
-    content, calls, usage = _call_llm_stream(messages)
-                            ~~~~~~~~~~~~~~~~^^^^^^^^^^
-  File "C:\Users\EvanN\downloads\Hermes 2.0\Hermes\hermes_operator.py", line 115, in _call_llm_stream
-    stream = _client.chat.completions.create(
-        model=_model,
-    ...<5 lines>...
-        stream_options={"include_usage": True},
+  File "C:\Users\EvanN\Desktop\EVO-T1-Hermes-Ollama\hermes_operator.py", line 69, in plan
+    content, calls = executor.call_with_tools(messages)
+                     ~~~~~~~~~~~~~~~~~~~~~~~~^^^^^^^^^^
+  File "C:\Users\EvanN\Desktop\EVO-T1-Hermes-Ollama\plugins\llm_executor.py", line 183, in call_with_tools
+    return self.backend.tool_llm(messages, tools, **kwargs)
+           ~~~~~~~~~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\EvanN\Desktop\EVO-T1-Hermes-Ollama\plugins\groq.py", line 63, in tool_llm
+    resp = self._client.chat.completions.create(
+        model=self.model,
+    ...<3 lines>...
+        temperature=0,
     )
-TypeError: Completions.create() got an unexpected keyword argument 'stream_options'
+  File "C:\Users\EvanN\AppData\Local\Packages\PythonSoftwareFoundation.Python.3.13_qbz5n2kfra8p0\LocalCache\local-packages\Python313\site-packages\groq\resources\chat\completions.py", line 461, in create
+    return self._post(
+           ~~~~~~~~~~^
+        "/openai/v1/chat/completions",
+        ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+    ...<45 lines>...
+        stream_cls=Stream[ChatCompletionChunk],
+        ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+    )
+    ^
+  File "C:\Users\EvanN\AppData\Local\Packages\PythonSoftwareFoundation.Python.3.13_qbz5n2kfra8p0\LocalCache\local-packages\Python313\site-packages\groq\_base_client.py", line 1280, in post
+    return cast(ResponseT, self.request(cast_to, opts, stream=stream, stream_cls=stream_cls))
+                           ~~~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\EvanN\AppData\Local\Packages\PythonSoftwareFoundation.Python.3.13_qbz5n2kfra8p0\LocalCache\local-packages\Python313\site-packages\groq\_base_client.py", line 1067, in request
+    raise self._make_status_error_from_response(err.response) from None
+groq.BadRequestError: Error code: 400 - {'error': {'message': "Tool call validation failed: tool call validation failed: attempted to call tool 'json' which was not in request.tools", 'type': 'invalid_request_error', 'code': 'tool_use_failed', 'failed_generation': '{"name": "json", "arguments": {\n  "done": true,\n  "message": "Hello! How can I assist you today?"\n}}'}}
 
 The above exception was the direct cause of the following exception:
 
 Traceback (most recent call last):
-  File "C:\Users\EvanN\downloads\Hermes 2.0\Hermes\chat.py", line 166, in run_chat
+  File "C:\Users\EvanN\Desktop\EVO-T1-Hermes-Ollama\chat.py", line 69, in run_chat
     operator_module.plan(msg)
     ~~~~~~~~~~~~~~~~~~~~^^^^^
-  File "C:\Users\EvanN\downloads\Hermes 2.0\Hermes\hermes_operator.py", line 294, in plan
+  File "C:\Users\EvanN\Desktop\EVO-T1-Hermes-Ollama\hermes_operator.py", line 71, in plan
     raise RuntimeError(f"LLM call failed (turn {turn}): {e}") from e
-RuntimeError: LLM call failed (turn 1): Completions.create() got an unexpected keyword argument 'stream_options'
+RuntimeError: LLM call failed (turn 1): Error code: 400 - {'error': {'message': "Tool call validation failed: tool call validation failed: attempted to call tool 'json' which was not in request.tools", 'type': 'invalid_request_error', 'code': 'tool_use_failed', 'failed_generation': '{"name": "json", "arguments": {\n  "done": true,\n  "message": "Hello! How can I assist you today?"\n}}'}}
+
+--- 2026-04-15T16:14:44.813263 ---
+Traceback (most recent call last):
+  File "C:\Users\EvanN\Desktop\EVO-T1-Hermes-Ollama\chat.py", line 69, in run_chat
+    operator_module.plan(msg)
+    ~~~~~~~~~~~~~~~~~~~~^^^^^
+  File "C:\Users\EvanN\Desktop\EVO-T1-Hermes-Ollama\hermes_operator.py", line 93, in plan
+    messages.append(executor.build_done_json_reminder())
+                    ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+AttributeError: 'LLMExecutor' object has no attribute 'build_done_json_reminder'
+
+--- 2026-04-15T16:23:52.759251 ---
+Traceback (most recent call last):
+  File "C:\Users\EvanN\Desktop\EVO-T1-Hermes-Ollama\hermes_operator.py", line 69, in plan
+    content, calls = executor.call_with_tools(messages)
+                     ~~~~~~~~~~~~~~~~~~~~~~~~^^^^^^^^^^
+  File "C:\Users\EvanN\Desktop\EVO-T1-Hermes-Ollama\plugins\llm_executor.py", line 183, in call_with_tools
+    return self.backend.tool_llm(messages, tools, **kwargs)
+           ~~~~~~~~~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\EvanN\Desktop\EVO-T1-Hermes-Ollama\plugins\groq.py", line 63, in tool_llm
+    resp = self._client.chat.completions.create(
+        model=self.model,
+    ...<3 lines>...
+        temperature=0,
+    )
+  File "C:\Users\EvanN\AppData\Local\Packages\PythonSoftwareFoundation.Python.3.13_qbz5n2kfra8p0\LocalCache\local-packages\Python313\site-packages\groq\resources\chat\completions.py", line 461, in create
+    return self._post(
+           ~~~~~~~~~~^
+        "/openai/v1/chat/completions",
+        ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+    ...<45 lines>...
+        stream_cls=Stream[ChatCompletionChunk],
+        ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+    )
+    ^
+  File "C:\Users\EvanN\AppData\Local\Packages\PythonSoftwareFoundation.Python.3.13_qbz5n2kfra8p0\LocalCache\local-packages\Python313\site-packages\groq\_base_client.py", line 1280, in post
+    return cast(ResponseT, self.request(cast_to, opts, stream=stream, stream_cls=stream_cls))
+                           ~~~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\EvanN\AppData\Local\Packages\PythonSoftwareFoundation.Python.3.13_qbz5n2kfra8p0\LocalCache\local-packages\Python313\site-packages\groq\_base_client.py", line 1067, in request
+    raise self._make_status_error_from_response(err.response) from None
+groq.BadRequestError: Error code: 400 - {'error': {'message': "Tool call validation failed: tool call validation failed: attempted to call tool 'json' which was not in request.tools", 'type': 'invalid_request_error', 'code': 'tool_use_failed', 'failed_generation': '{"name": "json", "arguments": {\n  "done": true,\n  "message": "Hello! How can I assist you today?"\n}}'}}
+
+The above exception was the direct cause of the following exception:
+
+Traceback (most recent call last):
+  File "C:\Users\EvanN\Desktop\EVO-T1-Hermes-Ollama\chat.py", line 69, in run_chat
+    operator_module.plan(msg)
+    ~~~~~~~~~~~~~~~~~~~~^^^^^
+  File "C:\Users\EvanN\Desktop\EVO-T1-Hermes-Ollama\hermes_operator.py", line 71, in plan
+    raise RuntimeError(f"LLM call failed (turn {turn}): {e}") from e
+RuntimeError: LLM call failed (turn 1): Error code: 400 - {'error': {'message': "Tool call validation failed: tool call validation failed: attempted to call tool 'json' which was not in request.tools", 'type': 'invalid_request_error', 'code': 'tool_use_failed', 'failed_generation': '{"name": "json", "arguments": {\n  "done": true,\n  "message": "Hello! How can I assist you today?"\n}}'}}
+
+--- 2026-04-15T16:24:38.952236 ---
+Traceback (most recent call last):
+  File "C:\Users\EvanN\Desktop\EVO-T1-Hermes-Ollama\hermes_operator.py", line 69, in plan
+    content, calls = executor.call_with_tools(messages)
+                     ~~~~~~~~~~~~~~~~~~~~~~~~^^^^^^^^^^
+  File "C:\Users\EvanN\Desktop\EVO-T1-Hermes-Ollama\plugins\llm_executor.py", line 183, in call_with_tools
+    return self.backend.tool_llm(messages, tools, **kwargs)
+           ~~~~~~~~~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\EvanN\Desktop\EVO-T1-Hermes-Ollama\plugins\groq.py", line 63, in tool_llm
+    resp = self._client.chat.completions.create(
+        model=self.model,
+    ...<3 lines>...
+        temperature=0,
+    )
+  File "C:\Users\EvanN\AppData\Local\Packages\PythonSoftwareFoundation.Python.3.13_qbz5n2kfra8p0\LocalCache\local-packages\Python313\site-packages\groq\resources\chat\completions.py", line 461, in create
+    return self._post(
+           ~~~~~~~~~~^
+        "/openai/v1/chat/completions",
+        ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+    ...<45 lines>...
+        stream_cls=Stream[ChatCompletionChunk],
+        ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+    )
+    ^
+  File "C:\Users\EvanN\AppData\Local\Packages\PythonSoftwareFoundation.Python.3.13_qbz5n2kfra8p0\LocalCache\local-packages\Python313\site-packages\groq\_base_client.py", line 1280, in post
+    return cast(ResponseT, self.request(cast_to, opts, stream=stream, stream_cls=stream_cls))
+                           ~~~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\EvanN\AppData\Local\Packages\PythonSoftwareFoundation.Python.3.13_qbz5n2kfra8p0\LocalCache\local-packages\Python313\site-packages\groq\_base_client.py", line 1067, in request
+    raise self._make_status_error_from_response(err.response) from None
+groq.BadRequestError: Error code: 400 - {'error': {'message': "Tool call validation failed: tool call validation failed: attempted to call tool 'json' which was not in request.tools", 'type': 'invalid_request_error', 'code': 'tool_use_failed', 'failed_generation': '{"name": "json", "arguments": {\n  "done": true,\n  "message": "Hello! How can I assist you today?"\n}}'}}
+
+The above exception was the direct cause of the following exception:
+
+Traceback (most recent call last):
+  File "C:\Users\EvanN\Desktop\EVO-T1-Hermes-Ollama\chat.py", line 69, in run_chat
+    operator_module.plan(msg)
+    ~~~~~~~~~~~~~~~~~~~~^^^^^
+  File "C:\Users\EvanN\Desktop\EVO-T1-Hermes-Ollama\hermes_operator.py", line 71, in plan
+    raise RuntimeError(f"LLM call failed (turn {turn}): {e}") from e
+RuntimeError: LLM call failed (turn 1): Error code: 400 - {'error': {'message': "Tool call validation failed: tool call validation failed: attempted to call tool 'json' which was not in request.tools", 'type': 'invalid_request_error', 'code': 'tool_use_failed', 'failed_generation': '{"name": "json", "arguments": {\n  "done": true,\n  "message": "Hello! How can I assist you today?"\n}}'}}
+
+--- 2026-04-15T22:54:07.251267 ---
+Traceback (most recent call last):
+  File "C:\Users\EvanN\Desktop\EVO-T1-Hermes-Ollama\hermes_operator.py", line 69, in plan
+    content, calls = executor.call_with_tools(messages)
+                     ~~~~~~~~~~~~~~~~~~~~~~~~^^^^^^^^^^
+  File "C:\Users\EvanN\Desktop\EVO-T1-Hermes-Ollama\plugins\llm_executor.py", line 183, in call_with_tools
+  File "C:\Users\EvanN\Desktop\EVO-T1-Hermes-Ollama\plugins\groq.py", line 63, in tool_llm
+    resp = self._client.chat.completions.create(
+        model=self.model,
+    ...<3 lines>...
+        temperature=0,
+    )
+  File "C:\Users\EvanN\AppData\Local\Packages\PythonSoftwareFoundation.Python.3.13_qbz5n2kfra8p0\LocalCache\local-packages\Python313\site-packages\groq\resources\chat\completions.py", line 461, in create
+    return self._post(
+           ~~~~~~~~~~^
+        "/openai/v1/chat/completions",
+        ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+    ...<45 lines>...
+        stream_cls=Stream[ChatCompletionChunk],
+        ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+    )
+    ^
+  File "C:\Users\EvanN\AppData\Local\Packages\PythonSoftwareFoundation.Python.3.13_qbz5n2kfra8p0\LocalCache\local-packages\Python313\site-packages\groq\_base_client.py", line 1280, in post
+    return cast(ResponseT, self.request(cast_to, opts, stream=stream, stream_cls=stream_cls))
+                           ~~~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\EvanN\AppData\Local\Packages\PythonSoftwareFoundation.Python.3.13_qbz5n2kfra8p0\LocalCache\local-packages\Python313\site-packages\groq\_base_client.py", line 1067, in request
+    raise self._make_status_error_from_response(err.response) from None
+groq.BadRequestError: Error code: 400 - {'error': {'message': "Tool call validation failed: tool call validation failed: attempted to call tool 'json' which was not in request.tools", 'type': 'invalid_request_error', 'code': 'tool_use_failed', 'failed_generation': '{"name": "json", "arguments": {\n  "done": true,\n  "message": "Hello! How can I assist you today?"\n}}'}}
+
+The above exception was the direct cause of the following exception:
+
+Traceback (most recent call last):
+  File "C:\Users\EvanN\Desktop\EVO-T1-Hermes-Ollama\chat.py", line 69, in run_chat
+    operator_module.plan(msg)
+    ~~~~~~~~~~~~~~~~~~~~^^^^^
+  File "C:\Users\EvanN\Desktop\EVO-T1-Hermes-Ollama\hermes_operator.py", line 71, in plan
+    raise RuntimeError(f"LLM call failed (turn {turn}): {e}") from e
+RuntimeError: LLM call failed (turn 1): Error code: 400 - {'error': {'message': "Tool call validation failed: tool call validation failed: attempted to call tool 'json' which was not in request.tools", 'type': 'invalid_request_error', 'code': 'tool_use_failed', 'failed_generation': '{"name": "json", "arguments": {\n  "done": true,\n  "message": "Hello! How can I assist you today?"\n}}'}}
+
+--- 2026-04-15T22:59:52.538351 ---
+Traceback (most recent call last):
+  File "C:\Users\EvanN\Desktop\EVO-T1-Hermes-Ollama\hermes_operator.py", line 69, in plan
+    content, calls = executor.call_with_tools(messages)
+                     ~~~~~~~~~~~~~~~~~~~~~~~~^^^^^^^^^^
+  File "C:\Users\EvanN\Desktop\EVO-T1-Hermes-Ollama\plugins\llm_executor.py", line 191, in call_with_tools
+    return self.backend.tool_llm(messages, tools, **kwargs)
+           ~~~~~~~~~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\EvanN\Desktop\EVO-T1-Hermes-Ollama\plugins\groq.py", line 63, in tool_llm
+    resp = self._client.chat.completions.create(
+        model=self.model,
+    ...<4 lines>...
+    
+    )
+  File "C:\Users\EvanN\AppData\Local\Packages\PythonSoftwareFoundation.Python.3.13_qbz5n2kfra8p0\LocalCache\local-packages\Python313\site-packages\groq\resources\chat\completions.py", line 461, in create
+    return self._post(
+           ~~~~~~~~~~^
+        "/openai/v1/chat/completions",
+        ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+    ...<45 lines>...
+        stream_cls=Stream[ChatCompletionChunk],
+        ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+    )
+    ^
+  File "C:\Users\EvanN\AppData\Local\Packages\PythonSoftwareFoundation.Python.3.13_qbz5n2kfra8p0\LocalCache\local-packages\Python313\site-packages\groq\_base_client.py", line 1280, in post
+    return cast(ResponseT, self.request(cast_to, opts, stream=stream, stream_cls=stream_cls))
+                           ~~~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\EvanN\AppData\Local\Packages\PythonSoftwareFoundation.Python.3.13_qbz5n2kfra8p0\LocalCache\local-packages\Python313\site-packages\groq\_base_client.py", line 1067, in request
+    raise self._make_status_error_from_response(err.response) from None
+groq.BadRequestError: Error code: 400 - {'error': {'message': "Tool call validation failed: tool call validation failed: attempted to call tool 'JSON' which was not in request.tools", 'type': 'invalid_request_error', 'code': 'tool_use_failed', 'failed_generation': '{"name": "JSON", "arguments": {"done":true,"message":"Hello! How can I assist you today?"}}'}}
+
+The above exception was the direct cause of the following exception:
+
+Traceback (most recent call last):
+  File "C:\Users\EvanN\Desktop\EVO-T1-Hermes-Ollama\chat.py", line 69, in run_chat
+    operator_module.plan(msg)
+    ~~~~~~~~~~~~~~~~~~~~^^^^^
+  File "C:\Users\EvanN\Desktop\EVO-T1-Hermes-Ollama\hermes_operator.py", line 71, in plan
+    raise RuntimeError(f"LLM call failed (turn {turn}): {e}") from e
+RuntimeError: LLM call failed (turn 1): Error code: 400 - {'error': {'message': "Tool call validation failed: tool call validation failed: attempted to call tool 'JSON' which was not in request.tools", 'type': 'invalid_request_error', 'code': 'tool_use_failed', 'failed_generation': '{"name": "JSON", "arguments": {"done":true,"message":"Hello! How can I assist you today?"}}'}}
+
+--- 2026-04-15T23:04:19.537148 ---
+Traceback (most recent call last):
+  File "C:\Users\EvanN\Desktop\EVO-T1-Hermes-Ollama\hermes_operator.py", line 69, in plan
+    content, calls = executor.call_with_tools(messages)
+                     ~~~~~~~~~~~~~~~~~~~~~~~~^^^^^^^^^^
+  File "C:\Users\EvanN\Desktop\EVO-T1-Hermes-Ollama\plugins\llm_executor.py", line 191, in call_with_tools
+    return self.backend.tool_llm(messages, tools, **kwargs)
+           ~~~~~~~~~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\EvanN\Desktop\EVO-T1-Hermes-Ollama\plugins\groq.py", line 63, in tool_llm
+    resp = self._client.chat.completions.create(
+        model=self.model,
+    ...<4 lines>...
+    
+    )
+  File "C:\Users\EvanN\AppData\Local\Packages\PythonSoftwareFoundation.Python.3.13_qbz5n2kfra8p0\LocalCache\local-packages\Python313\site-packages\groq\resources\chat\completions.py", line 461, in create
+    return self._post(
+           ~~~~~~~~~~^
+        "/openai/v1/chat/completions",
+        ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+    ...<45 lines>...
+        stream_cls=Stream[ChatCompletionChunk],
+        ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+    )
+    ^
+  File "C:\Users\EvanN\AppData\Local\Packages\PythonSoftwareFoundation.Python.3.13_qbz5n2kfra8p0\LocalCache\local-packages\Python313\site-packages\groq\_base_client.py", line 1280, in post
+    return cast(ResponseT, self.request(cast_to, opts, stream=stream, stream_cls=stream_cls))
+                           ~~~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\EvanN\AppData\Local\Packages\PythonSoftwareFoundation.Python.3.13_qbz5n2kfra8p0\LocalCache\local-packages\Python313\site-packages\groq\_base_client.py", line 1067, in request
+    raise self._make_status_error_from_response(err.response) from None
+groq.BadRequestError: Error code: 400 - {'error': {'message': "Tool call validation failed: tool call validation failed: attempted to call tool 'JSON' which was not in request.tools", 'type': 'invalid_request_error', 'code': 'tool_use_failed', 'failed_generation': '{"name": "JSON", "arguments": {"done":true,"message":"Hello! How can I assist you today?"}}'}}
+
+The above exception was the direct cause of the following exception:
+
+Traceback (most recent call last):
+  File "C:\Users\EvanN\Desktop\EVO-T1-Hermes-Ollama\chat.py", line 69, in run_chat
+    operator_module.plan(msg)
+    ~~~~~~~~~~~~~~~~~~~~^^^^^
+  File "C:\Users\EvanN\Desktop\EVO-T1-Hermes-Ollama\hermes_operator.py", line 71, in plan
+    raise RuntimeError(f"LLM call failed (turn {turn}): {e}") from e
+RuntimeError: LLM call failed (turn 1): Error code: 400 - {'error': {'message': "Tool call validation failed: tool call validation failed: attempted to call tool 'JSON' which was not in request.tools", 'type': 'invalid_request_error', 'code': 'tool_use_failed', 'failed_generation': '{"name": "JSON", "arguments": {"done":true,"message":"Hello! How can I assist you today?"}}'}}

@@ -1,9 +1,10 @@
+import json
 import os
 from dataclasses import dataclass
 from typing import Callable
+from urllib import error, request
 
 from groq import Groq
-from hermes_operator import _COMPOUND_MODEL
 
 
 @dataclass(frozen=True)
@@ -42,12 +43,44 @@ def _normalize_debug(value: str) -> str:
     raise ValueError("must be 0/1, true/false, or on/off")
 
 
+def _normalize_provider(value: str) -> str:
+    normalized = value.strip().lower()
+    if normalized in {"groq", "ollama"}:
+        return normalized
+    raise ValueError("must be groq or ollama")
+
+
+DEFAULT_PROVIDER = "groq"
+PROVIDER_DEFAULTS = {
+    "groq": {
+        "model_key": "GROQ_MODEL",
+        "rpm_key": "GROQ_RPM_LIMIT",
+        "default_model": "openai/gpt-oss-120b",
+        "default_rpm": "20",
+    },
+    "ollama": {
+        "model_key": "OLLAMA_MODEL",
+        "rpm_key": "OLLAMA_RPM_LIMIT",
+        "default_model": "qwen3",
+        "default_rpm": "20",
+    },
+}
+PROVIDER_FIELD_KEYS = {
+    "groq": ["GROQ_API_KEY", "GROQ_MODEL", "GROQ_RPM_LIMIT"],
+    "ollama": ["OLLAMA_HOST", "OLLAMA_MODEL", "OLLAMA_RPM_LIMIT"],
+}
+COMMON_FIELD_KEYS = ["LLM_PROVIDER", "OPERATOR_DEBUG"]
+
+
 SETTINGS_FIELDS = [
+    SettingField("LLM_PROVIDER", "LLM Provider", DEFAULT_PROVIDER, normalizer=_normalize_provider),
+    SettingField("OPERATOR_DEBUG", "Debug Mode", "1", normalizer=_normalize_debug),
     SettingField("GROQ_API_KEY", "API Key", "", secret=True, required=True),
     SettingField("GROQ_MODEL", "Chat Model", "openai/gpt-oss-120b", normalizer=_normalize_non_empty),
     SettingField("GROQ_RPM_LIMIT", "RPM Limit", "20", normalizer=_normalize_rpm),
-    SettingField("OPERATOR_COMPOUND_MODEL", "Compound Model", _COMPOUND_MODEL, normalizer=_normalize_non_empty),
-    SettingField("OPERATOR_DEBUG", "Debug Mode", "1", normalizer=_normalize_debug),
+    SettingField("OLLAMA_HOST", "Ollama Host", "http://localhost:11434", normalizer=_normalize_non_empty),
+    SettingField("OLLAMA_MODEL", "Ollama Model", "qwen3", normalizer=_normalize_non_empty),
+    SettingField("OLLAMA_RPM_LIMIT", "Ollama RPM Limit", "20", normalizer=_normalize_rpm),
 ]
 
 
@@ -56,6 +89,35 @@ def _get_field(key: str) -> SettingField:
         if field.key == key:
             return field
     raise KeyError(f"Unknown setting key: {key}")
+
+
+def get_provider(settings: dict[str, str] | None = None) -> str:
+    field = _get_field("LLM_PROVIDER")
+    raw_value = (settings or {}).get(field.key, field.default)
+    try:
+        return normalize_setting_value(field, raw_value, strict_required=False)
+    except ValueError:
+        return DEFAULT_PROVIDER
+
+
+def get_provider_defaults(provider: str) -> dict[str, str]:
+    return dict(PROVIDER_DEFAULTS.get(provider, PROVIDER_DEFAULTS[DEFAULT_PROVIDER]))
+
+
+def get_active_fields(settings: dict[str, str] | None = None) -> list[SettingField]:
+    provider = get_provider(settings)
+    keys = COMMON_FIELD_KEYS + PROVIDER_FIELD_KEYS.get(provider, PROVIDER_FIELD_KEYS[DEFAULT_PROVIDER])
+    return [_get_field(key) for key in keys]
+
+
+def get_provider_runtime_summary(settings: dict[str, str]) -> dict[str, str]:
+    provider = get_provider(settings)
+    defaults = get_provider_defaults(provider)
+    return {
+        "provider": provider,
+        "model": settings.get(defaults["model_key"], defaults["default_model"]),
+        "rpm": settings.get(defaults["rpm_key"], defaults["default_rpm"]),
+    }
 
 
 def normalize_setting_value(field: SettingField, value: str, strict_required: bool = False) -> str:
@@ -87,31 +149,45 @@ def _read_env_settings(env_path: str) -> dict[str, str]:
     return settings
 
 
-def load_settings(env_path):
-    raw_settings = _read_env_settings(env_path)
-    loaded: dict[str, str] = {}
+def _validate_settings(raw_settings: dict[str, str], strict_required: bool) -> tuple[dict[str, str], list[str]]:
+    validated: dict[str, str] = {}
+    errors: list[str] = []
+
+    provider_field = _get_field("LLM_PROVIDER")
+    try:
+        validated[provider_field.key] = normalize_setting_value(
+            provider_field,
+            raw_settings.get(provider_field.key, provider_field.default),
+            strict_required=False,
+        )
+    except ValueError as exc:
+        errors.append(str(exc))
+        validated[provider_field.key] = provider_field.default
+
+    active_field_keys = {field.key for field in get_active_fields(validated)}
     for field in SETTINGS_FIELDS:
+        if field.key == provider_field.key:
+            continue
+
+        raw_value = raw_settings.get(field.key, field.default)
+        should_strict = strict_required and field.key in active_field_keys
         try:
-            loaded[field.key] = normalize_setting_value(field, raw_settings.get(field.key, field.default), strict_required=False)
-        except ValueError:
-            loaded[field.key] = field.default
+            validated[field.key] = normalize_setting_value(field, raw_value, strict_required=should_strict)
+        except ValueError as exc:
+            if field.key in active_field_keys:
+                errors.append(str(exc))
+            validated[field.key] = field.default
+
+    return validated, errors
+
+
+def load_settings(env_path):
+    loaded, _ = _validate_settings(_read_env_settings(env_path), strict_required=False)
     return loaded
 
 
 def load_settings_with_validation(env_path: str, strict_required: bool = False) -> tuple[dict[str, str], list[str]]:
-    raw_settings = _read_env_settings(env_path)
-    validated: dict[str, str] = {}
-    errors: list[str] = []
-
-    for field in SETTINGS_FIELDS:
-        raw_value = raw_settings.get(field.key, field.default)
-        try:
-            validated[field.key] = normalize_setting_value(field, raw_value, strict_required=strict_required)
-        except ValueError as exc:
-            errors.append(str(exc))
-            validated[field.key] = field.default
-
-    return validated, errors
+    return _validate_settings(_read_env_settings(env_path), strict_required=strict_required)
 
 
 def save_setting(env_path, key, value, operator_module):
@@ -140,17 +216,15 @@ def save_setting(env_path, key, value, operator_module):
         env_file.writelines(lines)
 
     os.environ[key] = value
-    if key == "OPERATOR_COMPOUND_MODEL":
-        operator_module._COMPOUND_MODEL = value
-    if key == "OPERATOR_DEBUG":
-        operator_module._debug = value == "1"
 
 
 def reload_operator(env_path, operator_module, session):
     try:
         state = operator_module.setup(env_path)
-        session["status"] = f"Operator reloaded ({state['model']})"
-        return f"Operator reloaded. Model: {state['model']}"
+        provider = state.get("provider", get_provider(load_settings(env_path)))
+        model = state.get("model", "")
+        session["status"] = f"Operator reloaded ({provider}: {model})"
+        return f"Operator reloaded. Provider: {provider}  Model: {model}"
     except Exception as exc:
         session["errors"] += 1
         session["status"] = f"Reload failed: {exc}"
@@ -158,15 +232,28 @@ def reload_operator(env_path, operator_module, session):
 
 
 def test_connection(settings):
-    api_key = settings.get("GROQ_API_KEY", "").strip()
-    if not api_key:
-        return "Failed: GROQ_API_KEY is not set."
+    provider = get_provider(settings)
+    if provider == "groq":
+        api_key = settings.get("GROQ_API_KEY", "").strip()
+        if not api_key:
+            return "Failed: GROQ_API_KEY is not set."
 
+        try:
+            client = Groq(api_key=api_key)
+            models = client.models.list()
+            model_count = len(getattr(models, "data", []) or [])
+            return f"Connected to Groq successfully. {model_count} model(s) available."
+        except Exception as exc:
+            return f"Failed: {exc}"
+
+    host = settings.get("OLLAMA_HOST", "http://localhost:11434").rstrip("/")
     try:
-        client = Groq(api_key=api_key)
-        models = client.models.list()
-        model_count = len(getattr(models, "data", []) or [])
-        return f"Connected to Groq successfully. {model_count} model(s) available."
+        with request.urlopen(f"{host}/api/tags", timeout=5) as response:
+            payload = json.loads(response.read().decode("utf-8"))
+        model_count = len(payload.get("models", []) or [])
+        return f"Connected to Ollama successfully. {model_count} model(s) available."
+    except error.URLError as exc:
+        return f"Failed: {exc.reason}"
     except Exception as exc:
         return f"Failed: {exc}"
 
@@ -183,7 +270,8 @@ def mask_value(value, secret=False):
 
 def render_settings_menu(console, render_header, sel, settings, status=None):
     console.clear()
-    render_header("SETTINGS", "Edit values and apply changes instantly")
+    provider = get_provider(settings)
+    render_header("SETTINGS", f"Edit {provider} and operator values")
 
     from rich import box
     from rich.align import Align
@@ -196,15 +284,16 @@ def render_settings_menu(console, render_header, sel, settings, status=None):
     table.add_column(width=20)
     table.add_column(width=40)
 
+    active_fields = get_active_fields(settings)
     rows = [
         (field.label, mask_value(settings.get(field.key, ""), field.secret))
-        for field in SETTINGS_FIELDS
+        for field in active_fields
     ]
     rows.extend(
         [
-            ("Test Connection", "Validate current Groq API key"),
+            ("Test Connection", f"Validate current {provider} configuration"),
             ("Reload Operator", "Apply settings to running session"),
-            ("Reset Defaults", "Reset model/rpm/compound defaults"),
+            ("Reset Defaults", f"Reset {provider} model/rpm defaults"),
             ("Back", "Return to main menu"),
         ]
     )
@@ -241,15 +330,17 @@ def prompt_setting(console, field: SettingField, settings, env_path, operator_mo
     except ValueError as exc:
         return f"Failed: {exc}"
 
-    if field.key in {"GROQ_MODEL", "GROQ_RPM_LIMIT", "OPERATOR_COMPOUND_MODEL", "GROQ_API_KEY"}:
-        reload_operator(env_path, operator_module, session)
-    return f"Saved {field.label}."
+    reload_status = reload_operator(env_path, operator_module, session)
+    if reload_status.startswith("Failed"):
+        return reload_status
+    return f"Saved {field.label}. {reload_status}"
 
 
-def reset_defaults(env_path, default_model, default_rpm, operator_module, session):
-    save_setting(env_path, "GROQ_MODEL", default_model, operator_module)
-    save_setting(env_path, "GROQ_RPM_LIMIT", default_rpm, operator_module)
-    save_setting(env_path, "OPERATOR_COMPOUND_MODEL", "groq/compound", operator_module)
+def reset_defaults(env_path, settings, operator_module, session):
+    provider = get_provider(settings)
+    defaults = get_provider_defaults(provider)
+    save_setting(env_path, defaults["model_key"], defaults["default_model"], operator_module)
+    save_setting(env_path, defaults["rpm_key"], defaults["default_rpm"], operator_module)
     return reload_operator(env_path, operator_module, session)
 
 
@@ -266,9 +357,11 @@ def run_settings(
     settings = load_settings(env_path)
     sel = 0
     status = "Edit values here. Changes are saved to .env immediately."
-    total_rows = len(SETTINGS_FIELDS) + 4
 
     while True:
+        active_fields = get_active_fields(settings)
+        total_rows = len(active_fields) + 4
+        sel = min(sel, total_rows - 1)
         render_settings_menu(console, render_header, sel, settings, status)
         try:
             key = read_key()
@@ -284,15 +377,15 @@ def run_settings(
         if key != "ENTER":
             continue
 
-        if sel < len(SETTINGS_FIELDS):
-            status = prompt_setting(console, SETTINGS_FIELDS[sel], settings, env_path, operator_module, session)
+        if sel < len(active_fields):
+            status = prompt_setting(console, active_fields[sel], settings, env_path, operator_module, session)
             settings = load_settings(env_path)
-        elif sel == len(SETTINGS_FIELDS):
+        elif sel == len(active_fields):
             status = test_connection(settings)
-        elif sel == len(SETTINGS_FIELDS) + 1:
+        elif sel == len(active_fields) + 1:
             status = reload_operator(env_path, operator_module, session)
-        elif sel == len(SETTINGS_FIELDS) + 2:
-            status = reset_defaults(env_path, default_model, default_rpm, operator_module, session)
+        elif sel == len(active_fields) + 2:
+            status = reset_defaults(env_path, settings, operator_module, session)
             settings = load_settings(env_path)
         else:
             return
