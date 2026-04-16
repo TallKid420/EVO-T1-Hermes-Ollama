@@ -13,6 +13,7 @@ import shutil
 import subprocess
 import re
 import json
+import time
 
 
 def _expand_path(path: str) -> str:
@@ -350,12 +351,30 @@ def read_file_text(path: str, max_chars: int = 8000):
         return {"error": str(e)}
 
 
+
+def _is_safe_parent_path(path: str) -> bool:
+    p = _expand_path(path)
+    parent = os.path.dirname(p)
+    if not parent:
+        return False
+    workspace = os.path.abspath(os.getcwd())
+    if _is_protected_path(parent) and os.path.abspath(parent) != workspace:
+        return False
+    try:
+        common = os.path.commonpath([workspace, p])
+    except ValueError:
+        return False
+    return common == workspace
+
+
 def write_file_text(path: str, content: str, append: bool = False):
     """Write (or append) text to a file. Creates parent directories if needed."""
     try:
         p = _expand_path(path)
         if _is_protected_path(p):
             return {"error": f"Refusing to write to protected path: {p}"}
+        if not _is_safe_parent_path(p):
+            return {"error": f"Refusing to write outside workspace-safe parent path: {p}"}
         os.makedirs(os.path.dirname(p) or ".", exist_ok=True)
         mode = "a" if append else "w"
         with open(p, mode, encoding="utf-8") as f:
@@ -366,14 +385,15 @@ def write_file_text(path: str, content: str, append: bool = False):
 
 
 def run_shell_command(command: str, timeout: int = 30):
-    """Run a PowerShell command and return stdout/stderr."""
+    """Run a shell command and return stdout/stderr."""
     try:
         normalized = _normalize_shell_command(command)
         timeout = min(max(1, int(timeout)), 120)
-        result = subprocess.run(
-            ["powershell", "-NoProfile", "-NonInteractive", "-Command", normalized],
-            capture_output=True, text=True, timeout=timeout
-        )
+        if sys.platform == "win32":
+            args = ["powershell", "-NoProfile", "-NonInteractive", "-Command", normalized]
+            result = subprocess.run(args, capture_output=True, text=True, timeout=timeout)
+        else:
+            result = subprocess.run(normalized, capture_output=True, text=True, timeout=timeout, shell=True)
         return {
             "command": normalized,
             "stdout": result.stdout.strip(),
@@ -384,27 +404,6 @@ def run_shell_command(command: str, timeout: int = 30):
         return {"error": f"Command timed out after {timeout}s"}
     except Exception as e:
         return {"error": str(e)}
-        """Run a shell command and return stdout/stderr."""
-        try:
-            normalized = _normalize_shell_command(command)
-            timeout = min(max(1, int(timeout)), 120)
-        
-            if sys.platform == "win32":
-                args = ["powershell", "-NoProfile", "-NonInteractive", "-Command", normalized]
-            else:
-                args = ["bash", "-c", normalized]
-        
-            result = subprocess.run(args, capture_output=True, text=True, timeout=timeout, shell=False)
-            return {
-                "command": normalized,
-                "stdout": result.stdout.strip(),
-                "stderr": result.stderr.strip(),
-                "returncode": result.returncode,
-            }
-        except subprocess.TimeoutExpired:
-            return {"error": f"Command timed out after {timeout}s"}
-        except Exception as e:
-            return {"error": str(e)}
 
 
 def get_system_info():
@@ -435,115 +434,78 @@ def get_disk_usage(path: str = "C:\\"):
         }
     except Exception as e:
         return {"error": str(e)}
-    def get_disk_usage(path: str = "/"):
-        """Return total, used, and free disk space for a drive or path."""
-        try:
-            if not path or path == "/":
-                path = "C:\\" if sys.platform == "win32" else "/"
-            usage = shutil.disk_usage(os.path.expanduser(path))
-            gb = 1024 ** 3
-            return {
-                "path": path,
-                "total_gb": round(usage.total / gb, 2),
-                "used_gb": round(usage.used / gb, 2),
-                "free_gb": round(usage.free / gb, 2),
-                "percent_used": round(usage.used / usage.total * 100, 1),
-            }
-        except Exception as e:
-            return {"error": str(e)}
-
 
 def get_running_processes():
-    """List running processes with PID and memory usage (Windows)."""
+    """List running processes with PID and memory usage."""
     try:
+        if sys.platform == "win32":
+            result = subprocess.run(
+                ["tasklist", "/FO", "CSV", "/NH"],
+                capture_output=True, text=True, timeout=15
+            )
+            processes = []
+            for line in result.stdout.strip().splitlines()[:60]:
+                parts = [p.strip('"') for p in line.split('","')]
+                if len(parts) >= 5:
+                    processes.append({"name": parts[0], "pid": parts[1], "memory": parts[4]})
+            return {"count": len(processes), "processes": processes}
+
         result = subprocess.run(
-            ["tasklist", "/FO", "CSV", "/NH"],
-            capture_output=True, text=True, timeout=15
+            ["ps", "-eo", "pid=,comm=,%mem=", "--sort=-%mem"],
+            capture_output=True,
+            text=True,
+            timeout=15,
         )
         processes = []
         for line in result.stdout.strip().splitlines()[:60]:
-            parts = [p.strip('"') for p in line.split('","')]
-            if len(parts) >= 5:
-                processes.append({"name": parts[0], "pid": parts[1], "memory": parts[4]})
+            parts = line.split(None, 2)
+            if len(parts) >= 3:
+                pid, name, mem = parts
+                processes.append({"name": name, "pid": pid, "memory": f"{mem}%"})
         return {"count": len(processes), "processes": processes}
     except Exception as e:
         return {"error": str(e)}
-        """List running processes with PID and memory usage."""
-        try:
-            processes = []
-            if sys.platform == "win32":
-                result = subprocess.run(
-                    ["tasklist", "/FO", "CSV", "/NH"],
-                    capture_output=True, text=True, timeout=15
-                )
-                for line in result.stdout.strip().splitlines()[:60]:
-                    parts = [p.strip('"') for p in line.split('","')]
-                    if len(parts) >= 5:
-                        processes.append({"name": parts[0], "pid": parts[1], "memory": parts[4]})
-            else:
-                result = subprocess.run(
-                    ["ps", "aux"],
-                    capture_output=True, text=True, timeout=15
-                )
-                for line in result.stdout.strip().splitlines()[1:61]:
-                    parts = line.split()
-                    if len(parts) >= 11:
-                        processes.append({"name": parts[10] if parts[10] else parts[0], "pid": parts[1], "memory": parts[5]})
-            return {"count": len(processes), "processes": processes}
-        except Exception as e:
-            return {"error": str(e)}
 
 
 
 def kill_process(identifier: str):
     """Kill a process by name (e.g. 'notepad.exe') or PID."""
     try:
-        if identifier.isdigit():
-            args = ["taskkill", "/PID", identifier, "/F"]
+        if sys.platform == "win32":
+            if identifier.isdigit():
+                args = ["taskkill", "/PID", identifier, "/F"]
+            else:
+                args = ["taskkill", "/IM", identifier, "/F"]
         else:
-            args = ["taskkill", "/IM", identifier, "/F"]
+            if identifier.isdigit():
+                args = ["kill", "-9", identifier]
+            else:
+                args = ["pkill", "-f", identifier]
         result = subprocess.run(args, capture_output=True, text=True, timeout=10)
-        return {"identifier": identifier, "stdout": result.stdout.strip(), "returncode": result.returncode}
+        return {
+            "identifier": identifier,
+            "stdout": result.stdout.strip(),
+            "stderr": result.stderr.strip(),
+            "returncode": result.returncode,
+        }
     except Exception as e:
         return {"error": str(e)}
-        """Kill a process by name or PID."""
-        try:
-            if sys.platform == "win32":
-                if identifier.isdigit():
-                    args = ["taskkill", "/PID", identifier, "/F"]
-                else:
-                    args = ["taskkill", "/IM", identifier, "/F"]
-            else:
-                if identifier.isdigit():
-                    args = ["kill", "-9", identifier]
-                else:
-                    args = ["pkill", "-9", identifier]
-            result = subprocess.run(args, capture_output=True, text=True, timeout=10)
-            return {"identifier": identifier, "stdout": result.stdout.strip(), "returncode": result.returncode}
-        except Exception as e:
-            return {"error": str(e)}
 
 
 
 def open_file(path: str):
     """Open a file or URL with its default application."""
     try:
-        os.startfile(os.path.expanduser(path))
+        target = os.path.expanduser(path)
+        if sys.platform == "win32":
+            os.startfile(target)
+        elif sys.platform == "darwin":
+            subprocess.run(["open", target], capture_output=True, text=True, timeout=10)
+        else:
+            subprocess.run(["xdg-open", target], capture_output=True, text=True, timeout=10)
         return {"opened": path}
     except Exception as e:
         return {"error": str(e)}
-        """Open a file or URL with its default application."""
-        try:
-            expanded = os.path.expanduser(path)
-            if sys.platform == "win32":
-                os.startfile(expanded)
-            elif sys.platform == "darwin":
-                subprocess.run(["open", expanded], check=True)
-            else:
-                subprocess.run(["xdg-open", expanded], check=True)
-            return {"opened": path}
-        except Exception as e:
-            return {"error": str(e)}
 
 
 
@@ -622,8 +584,9 @@ def ping_host(host: str, count: int = 4):
     """Ping a hostname or IP address and return latency stats."""
     try:
         count = min(max(1, int(count)), 10)
+        ping_flag = "-n" if sys.platform == "win32" else "-c"
         result = subprocess.run(
-            ["ping", "-n", str(count), host],
+            ["ping", ping_flag, str(count), host],
             capture_output=True, text=True, timeout=30
         )
         return {"host": host, "output": result.stdout.strip(), "returncode": result.returncode}
@@ -631,19 +594,6 @@ def ping_host(host: str, count: int = 4):
         return {"error": "Ping timed out"}
     except Exception as e:
         return {"error": str(e)}
-        """Ping a hostname or IP address and return latency stats."""
-        try:
-            count = min(max(1, int(count)), 10)
-            if sys.platform == "win32":
-                ping_args = ["ping", "-n", str(count), host]
-            else:
-                ping_args = ["ping", "-c", str(count), host]
-            result = subprocess.run(ping_args, capture_output=True, text=True, timeout=30)
-            return {"host": host, "output": result.stdout.strip(), "returncode": result.returncode}
-        except subprocess.TimeoutExpired:
-            return {"error": "Ping timed out"}
-        except Exception as e:
-            return {"error": str(e)}
 
 
 
@@ -657,12 +607,29 @@ def _call_compound(prompt: str) -> dict:
             return {"error": "GROQ_API_KEY not set"}
 
         compound_model = os.getenv("OPERATOR_COMPOUND_MODEL", "groq/compound")
+        timeout_seconds = float(os.getenv("GROQ_TIMEOUT_SECONDS", "30"))
+        max_retries = max(0, int(os.getenv("GROQ_MAX_RETRIES", "2")))
         client = Groq(api_key=api_key)
-        resp = client.chat.completions.create(
-            model=compound_model,
-            messages=[{"role": "user", "content": str(prompt).strip()}],
-            temperature=0,
-        )
+
+        last_error: Exception | None = None
+        for attempt in range(max_retries + 1):
+            try:
+                resp = client.chat.completions.create(
+                    model=compound_model,
+                    messages=[{"role": "user", "content": str(prompt).strip()}],
+                    temperature=0,
+                    timeout=timeout_seconds,
+                )
+                break
+            except Exception as e:
+                last_error = e
+                if attempt >= max_retries:
+                    return {"error": str(e)}
+                time.sleep(min(2 ** attempt, 4))
+
+        if 'resp' not in locals():
+            return {"error": str(last_error) if last_error else "compound request failed"}
+
         msg = resp.choices[0].message
         content = (msg.content or "").strip()
 

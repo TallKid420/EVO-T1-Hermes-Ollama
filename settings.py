@@ -220,10 +220,24 @@ def save_setting(env_path, key, value, operator_module):
 
 def reload_operator(env_path, operator_module, session):
     try:
+        validated, errors = load_settings_with_validation(env_path, strict_required=True)
+        for key, value in validated.items():
+            os.environ[key] = value
+
         state = operator_module.setup(env_path)
-        provider = state.get("provider", get_provider(load_settings(env_path)))
+        provider = state.get("provider", get_provider(validated))
         model = state.get("model", "")
-        session["status"] = f"Operator reloaded ({provider}: {model})"
+
+        warning = ""
+        if errors:
+            warning = f" (with {len(errors)} validation warning(s))"
+
+        session["status"] = f"Operator reloaded ({provider}: {model}){warning}"
+        if errors:
+            return (
+                f"Operator reloaded. Provider: {provider}  Model: {model}. "
+                f"Validation warnings: {' | '.join(errors)}"
+            )
         return f"Operator reloaded. Provider: {provider}  Model: {model}"
     except Exception as exc:
         session["errors"] += 1

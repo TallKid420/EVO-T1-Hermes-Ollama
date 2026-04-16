@@ -6,8 +6,8 @@ from executor import EXECUTOR, TOOLS as LOCAL_TOOLS
 
 
 PROVIDER_MODULES = {
-    "ollama": ("plugins.ollama", "OllamaExecutorDemo"),
-    "groq": ("plugins.groq", "GroqExecutorDemo"),
+    "ollama": ("plugins.ollama", "OllamaExecutor"),
+    "groq": ("plugins.groq", "GroqExecutor"),
 }
 
 class LLMExecutor:
@@ -100,6 +100,46 @@ class LLMExecutor:
             )
         return normalized_calls
 
+    def _tool_schema_for(self, name: str) -> dict:
+        for item in self.tools:
+            fn = item.get("function") if isinstance(item, dict) else None
+            if isinstance(fn, dict) and fn.get("name") == name:
+                params = fn.get("parameters")
+                return params if isinstance(params, dict) else {}
+        return {}
+
+    def _validate_tool_args(self, name: str, args: object) -> str | None:
+        if not isinstance(args, dict):
+            return "Tool arguments must be a JSON object."
+
+        schema = self._tool_schema_for(name)
+        required = schema.get("required", []) if isinstance(schema, dict) else []
+        properties = schema.get("properties", {}) if isinstance(schema, dict) else {}
+
+        for key in required:
+            if key not in args:
+                return f"Missing required argument: {key}"
+
+        for key, value in args.items():
+            prop = properties.get(key)
+            if not isinstance(prop, dict):
+                continue
+            expected = prop.get("type")
+            if expected == "string" and not isinstance(value, str):
+                return f"Argument '{key}' must be a string"
+            if expected == "integer" and (not isinstance(value, int) or isinstance(value, bool)):
+                return f"Argument '{key}' must be an integer"
+            if expected == "number" and (not isinstance(value, (int, float)) or isinstance(value, bool)):
+                return f"Argument '{key}' must be a number"
+            if expected == "boolean" and not isinstance(value, bool):
+                return f"Argument '{key}' must be a boolean"
+            if expected == "array" and not isinstance(value, list):
+                return f"Argument '{key}' must be an array"
+            if expected == "object" and not isinstance(value, dict):
+                return f"Argument '{key}' must be an object"
+
+        return None
+
     def execute_tool_calls(self, messages: list[dict], calls: list[dict]) -> list[str]:
         log_lines: list[str] = []
         for call in calls:
@@ -114,9 +154,17 @@ class LLMExecutor:
             else:
                 try:
                     args = json.loads(fn_args_str)
-                    result = fn(**args)
                 except Exception as exc:
-                    result = {"error": str(exc)}
+                    result = {"error": f"Invalid JSON tool arguments: {exc}"}
+                else:
+                    validation_error = self._validate_tool_args(name, args)
+                    if validation_error:
+                        result = {"error": f"Invalid arguments for tool '{name}': {validation_error}"}
+                    else:
+                        try:
+                            result = fn(**args)
+                        except Exception as exc:
+                            result = {"error": str(exc)}
 
             result_json = json.dumps(result, ensure_ascii=True, sort_keys=True, separators=(",", ":"))
             messages.append(

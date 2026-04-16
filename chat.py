@@ -66,8 +66,15 @@ def run_chat(
         session_store.add_transcript("user", msg)
 
         try:
-            operator_module.plan(msg)
-            session_store.add_transcript("assistant", "Task handled by operator.")
+            outcome = operator_module.plan(msg)
+            assistant_parts = outcome.get("assistant_messages", []) if isinstance(outcome, dict) else []
+            tool_logs = outcome.get("tool_logs", []) if isinstance(outcome, dict) else []
+            if assistant_parts:
+                session_store.add_transcript("assistant", "\n".join(assistant_parts))
+            else:
+                session_store.add_transcript("assistant", "")
+            for line in tool_logs:
+                session_store.add_transcript("tool", line)
             session_store.SESSION["status"] = "Ready"
         except operator_module.OperatorSlashCommand as slash_cmd:
             session_store.SESSION["commands"] += 1

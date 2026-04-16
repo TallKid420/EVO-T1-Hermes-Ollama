@@ -5,16 +5,17 @@ from groq import Groq
 
 from plugins.llm_executor import LLMExecutor
 
-class GroqExecutorDemo(LLMExecutor):
-    """Demo class for Groq-backed LLM execution."""
+class GroqExecutor(LLMExecutor):
 
     def __init__(self, model: str | None = None, provider: str | None = "groq") -> None:
         super().__init__(model=model, provider=provider)
         self.model = model or "openai/gpt-oss-20b"
         self._client: Groq | None = None
-        self._rpm_interval: float = 3.0          # seconds between LLM calls
+        self._rpm_interval: float = 3.0
         self._last_call: float = 0.0
         self._debug: bool = True
+        self._request_timeout: float = 30.0
+        self._max_retries: int = 2
         self.compound_model = os.getenv("OPERATOR_COMPOUND_MODEL", "groq/compound")
 
     def _rate_wait(self) -> None:
@@ -36,11 +37,16 @@ class GroqExecutorDemo(LLMExecutor):
         self._rpm_interval = 60.0 / max(rpm, 0.01)
         self._debug = os.getenv("OPERATOR_DEBUG", "1").strip().lower() in {"1", "true", "on"}
 
+        self._request_timeout = float(os.getenv("GROQ_TIMEOUT_SECONDS", "30"))
+        self._max_retries = max(0, int(os.getenv("GROQ_MAX_RETRIES", "2")))
+
         return {
             "model": self.model,
             "compound_model": self.compound_model,
             "rpm_interval": self._rpm_interval,
             "debug": self._debug,
+            "request_timeout": self._request_timeout,
+            "max_retries": self._max_retries,
         }
     
     def _cache_metrics(self, usage: object) -> tuple[int, int, float, float]:
@@ -60,14 +66,26 @@ class GroqExecutorDemo(LLMExecutor):
             tools = self.tools
 
         self._rate_wait()
-        resp = self._client.chat.completions.create(
-            model=self.model,
-            messages=messages,
-            tools=tools,
-            tool_choice="auto",
-            temperature=0,
+        last_exc: Exception | None = None
+        for attempt in range(self._max_retries + 1):
+            try:
+                resp = self._client.chat.completions.create(
+                    model=self.model,
+                    messages=messages,
+                    tools=tools,
+                    tool_choice="auto",
+                    temperature=0,
+                    timeout=self._request_timeout,
 
-        )
+                )
+                break
+            except Exception as exc:
+                last_exc = exc
+                if attempt >= self._max_retries:
+                    raise
+                time.sleep(min(2 ** attempt, 4))
+        if last_exc is not None and 'resp' not in locals():
+            raise last_exc
         done = resp.model_dump().get("choices", [{}])[0].get("finish_reason") == "stop"
         usage = getattr(resp, "usage", None)
         message = resp.choices[0].message if getattr(resp, "choices", None) else None

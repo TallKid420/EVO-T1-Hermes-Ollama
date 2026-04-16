@@ -68,6 +68,8 @@ def add_transcript(role: str, content: str) -> None:
     if TRANSCRIPT_FILE:
         with open(TRANSCRIPT_FILE, "a", encoding="utf-8") as f:
             f.write(json.dumps(entry, ensure_ascii=False) + "\n")
+            f.flush()
+            os.fsync(f.fileno())
 
 
 def save_transcript_to_file(base_dir: str) -> str:
