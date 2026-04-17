@@ -1,5 +1,3 @@
-hermes/executor/autonomous_executor.py
-
 import subprocess
 
 from hermes.core.permissions import Permissions, PermissionError as HermesPermissionError, ApprovalRequired
@@ -53,13 +51,11 @@ class AutonomousExecutor:
             )
             return {"status": "rate_limited"}
         
-        cmd_str = f"systemctl restart {unit}"
+        cmd_str = f"systemctl restart {service['systemd_unit']}"
         try:
             self.safety.validate_command(cmd_str)
         except PermissionError as e:
             return {"status": "error", "error": str(e)}
-
-        result = self._run_command(["systemctl", "restart", unit])
 
         # Execute
         code, out, err = self._run_command(

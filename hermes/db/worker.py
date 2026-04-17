@@ -77,6 +77,11 @@ def run_one_task(task: Task, executor: AutonomousExecutor) -> Dict[str, Any]:
         if task.type == "restart_service":
             service = task.payload["service"]
             result = executor.restart_service(service)
+            # Don't create a new task if one is already queued/blocked for same unit
+            existing = store.get_tasks(status=["queued", "blocked", "running"], task_type="restart_service")
+            if any(t.payload.get("service") == service for t in existing):
+                log.info(f"Skipping duplicate restart_service task for {service}")
+                return
             success = result.get("status") == "success"
             store.add_action(
                 task_id=task.id,
