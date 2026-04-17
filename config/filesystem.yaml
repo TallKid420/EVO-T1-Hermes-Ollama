@@ -1,0 +1,9 @@
+safe_paths:
+  - /var/lib/hermes/cache
+  - /var/log/hermes
+
+restricted_paths:
+  - /
+  - /home
+  - /etc
+  - /usr

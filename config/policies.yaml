@@ -1,0 +1,10 @@
+cooldowns:
+  service_restart:
+    default_seconds: 600
+
+limits:
+  restart_per_hour: 3
+
+circuit_breaker:
+  max_failures: 3
+  window_minutes: 30

@@ -1,0 +1,26 @@
+autonomous_actions:
+
+  restart_service:
+    allowed: true
+    requires_approval: false
+
+  send_notification:
+    allowed: true
+    requires_approval: false
+
+  cleanup_cache:
+    allowed: true
+    requires_approval: false
+    restricted_to_safe_paths: true
+
+  kill_process:
+    allowed: false
+    requires_approval: true
+
+  delete_files:
+    allowed: false
+    requires_approval: true
+
+  modify_system_config:
+    allowed: false
+    requires_approval: true
