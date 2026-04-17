@@ -6,6 +6,7 @@ from hermes.watchers.base import BaseWatcher
 from hermes.daemon.state import WatcherState
 from hermes.db import store
 from hermes.db.worker import run_once
+from hermes.notifications.telegram import send
 
 
 class HermesDaemon:
@@ -39,6 +40,7 @@ class HermesDaemon:
                         print(
                             f"[EVENT] {result.severity} | {result.source} | {result.message}"
                         )
+                        send(f"{result.source}\n{result.message}", severity=result.severity)
                     else:
                         # State recovered — log as info
                         print(f"[OK]    {result.source} | {result.message}")

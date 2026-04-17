@@ -1,0 +1,26 @@
+system_agents:
+  planner:
+    model: "gemma-2b:latest"
+    provider: "ollama"
+    endpoint: "http://localhost:11434"
+    timeout_seconds: 15
+    allowed_actions:
+      - restart_service
+      - cleanup_cache
+      - send_notification
+      - delete_files
+      - notify_user
+    rules:
+      - "If risk is high (for example deleting non-cache files), set requires_approval=true"
+      - "Always respond in valid JSON only"
+
+custom_agents:
+  # Example of a custom agent configuration
+  # my_custom_agent:
+  #   model: "custom-model:latest"
+  #   provider: "custom_provider"
+  #   endpoint: "http://custom-endpoint:1234"
+  #   timeout_seconds: 20
+  #   allowed_actions:
+  #     - custom_action_1
+  #     - custom_action_2
