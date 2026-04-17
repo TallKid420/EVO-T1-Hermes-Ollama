@@ -63,6 +63,10 @@ def cmd_actions_list(args):
             f"success={a.success} input={a.input} output={a.output} error={a.error}"
         )
 
+def cmd_tasks_approve(args):
+    from hermes.db.store import approve_task
+    approve_task(args.task_id)
+    print(f"Task {args.task_id} approved — will run on next tick.")
 
 def cmd_worker_run_once(_args):
     res = run_once()
@@ -114,6 +118,10 @@ def build_parser():
     tk_show = tk_sub.add_parser("show")
     tk_show.add_argument("task_id", type=int)
     tk_show.set_defaults(func=cmd_tasks_show)
+
+    tk_approve = tk_sub.add_parser("approve", help="Approve a blocked task")
+    tk_approve.add_argument("task_id", type=int)
+    tk_approve.set_defaults(func=cmd_tasks_approve)
 
     ac = sub.add_parser("actions")
     ac_sub = ac.add_subparsers(dest="sub", required=True)

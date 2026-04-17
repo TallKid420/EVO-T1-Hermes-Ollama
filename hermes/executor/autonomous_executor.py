@@ -1,6 +1,8 @@
+hermes/executor/autonomous_executor.py
+
 import subprocess
 
-from hermes.core.permissions import Permissions, PermissionError, ApprovalRequired
+from hermes.core.permissions import Permissions, PermissionError as HermesPermissionError, ApprovalRequired
 from hermes.core.cooldowns import CooldownManager
 from hermes.core.safety import SafetyManager
 from hermes.utils.logging import Logger
@@ -33,7 +35,7 @@ class AutonomousExecutor:
         action_key = f"restart:{service_name}"
 
         if service_name not in self.services:
-            raise PermissionError(f"Service not allowed: {service_name}")
+            raise HermesPermissionError(f"Service not allowed: {service_name}")
 
         service = self.services[service_name]
 
@@ -50,6 +52,14 @@ class AutonomousExecutor:
                 f"Restart limit exceeded for {service_name}", "critical"
             )
             return {"status": "rate_limited"}
+        
+        cmd_str = f"systemctl restart {unit}"
+        try:
+            self.safety.validate_command(cmd_str)
+        except PermissionError as e:
+            return {"status": "error", "error": str(e)}
+
+        result = self._run_command(["systemctl", "restart", unit])
 
         # Execute
         code, out, err = self._run_command(

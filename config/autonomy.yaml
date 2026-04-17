@@ -24,3 +24,15 @@ autonomous_actions:
   modify_system_config:
     allowed: false
     requires_approval: true
+
+allowed_commands:
+  - "systemctl restart"
+  - "systemctl status"
+  - "systemctl is-active"
+  - "rm -rf"
+
+task_risks:
+  restart_service: "LOW"
+  cleanup_cache: "MEDIUM"
+  delete_files: "HIGH"
+  modify_system_config: "HIGH"

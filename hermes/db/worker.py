@@ -1,12 +1,16 @@
-import json
-import time
+import logging
+log = logging.getLogger(__name__)
 from typing import Dict, Any, Optional
 
+import json
+import time
 import yaml
 
 from hermes.db import store
 from hermes.db.models import Task
 from hermes.executor.autonomous_executor import AutonomousExecutor
+from hermes.core.permissions import ApprovalRequired
+from hermes.core.permissions import Permissions
 
 
 def load_services_config(path: str = "config/services.yaml") -> Dict[str, Any]:
@@ -19,16 +23,20 @@ def _event_to_task_policy(event_payload: Dict[str, Any], event_type: str, severi
     if event_type == "service_unhealthy":
         service = event_payload.get("service")
         if service:
+            _perms = Permissions()
+            action_cfg = _perms.config.get("autonomous_actions", {}).get("restart_service", {})
+            needs_approval = action_cfg.get("requires_approval", False)
+
             title = f"Restart service: {service}"
             payload = {"service": service, "reason": "service_unhealthy_event"}
             return store.create_task(
-                status="queued",
+                status="blocked" if needs_approval else "queued",
                 priority=100 if severity == "critical" else 50,
                 type_="restart_service",
                 title=title,
                 payload=payload,
                 event_id=event_id,
-                requires_approval=False,
+                requires_approval=needs_approval,
             )
     return None
 
@@ -39,8 +47,6 @@ def create_tasks_from_recent_events(limit: int = 50) -> int:
         task_id = _event_to_task_policy(ev.payload, ev.type, ev.severity, ev.id)
         if task_id:
             created += 1
-            # Acknowledge by setting acknowledged_at via a tiny “action” record (simple v1 approach)
-            # (Better later: add an explicit store.ack_event(ev.id))
             store.add_action(
                 task_id=task_id,
                 tool="policy",
@@ -49,8 +55,6 @@ def create_tasks_from_recent_events(limit: int = 50) -> int:
                 output={"task_id": task_id},
                 success=True,
             )
-            # Mark event acknowledged by writing back directly
-            # (keep it here to avoid adding yet another function for v1)
             from hermes.db.conn import connect
             from datetime import datetime
             conn = connect()
@@ -103,6 +107,10 @@ def run_one_task(task: Task, executor: AutonomousExecutor) -> Dict[str, Any]:
             )
             store.update_task_status(task.id, "failed")
             return {"status": "failed", "error": f"Unknown task type: {task.type}"}
+
+    except ApprovalRequired as e:
+        store.update_task_status(task.id, "blocked", blocked_reason=str(e))
+        log.warning(f"Task {task.id} blocked: {e}")
 
     except Exception as e:
         store.add_action(
