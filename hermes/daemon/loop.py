@@ -1,12 +1,31 @@
 import time
-import traceback
+import logging
 from typing import List
 
 from hermes.watchers.base import BaseWatcher
 from hermes.daemon.state import WatcherState
 from hermes.db import store
 from hermes.db.worker import run_once
-from hermes.notifications.telegram import send
+from hermes.notifications.telegram import TelegramNotifier
+
+
+logger = logging.getLogger(__name__)
+
+
+def _severity_name(severity) -> str:
+    value = getattr(severity, "value", severity)
+    return str(value).strip().lower()
+
+
+def _log_event_with_severity(source: str, message: str, severity) -> None:
+    sev = _severity_name(severity)
+    line = "EVENT %s | %s | %s"
+    if sev == "critical":
+        logger.critical(line, sev.upper(), source, message)
+    elif sev == "warning":
+        logger.warning(line, sev.upper(), source, message)
+    else:
+        logger.info(line, sev.upper(), source, message)
 
 
 class HermesDaemon:
@@ -37,40 +56,41 @@ class HermesDaemon:
                             payload=result.payload,
                         )
                         emitted += 1
-                        print(
-                            f"[EVENT] {result.severity} | {result.source} | {result.message}"
+                        _log_event_with_severity(
+                            source=result.source,
+                            message=result.message,
+                            severity=result.severity,
                         )
-                        send(f"{result.source}\n{result.message}", severity=result.severity)
+                        TelegramNotifier().send(f"{result.source}\n{result.message}", severity=result.severity)
                     else:
                         # State recovered — log as info
-                        print(f"[OK]    {result.source} | {result.message}")
+                        logger.info("OK %s | %s", result.source, result.message)
             except Exception:
-                print(f"[ERROR] Watcher {watcher.name} raised an exception:")
-                traceback.print_exc()
+                logger.exception("Watcher %s raised an exception", watcher.name)
         return emitted
 
     def tick(self):
         emitted = self._run_watchers()
         result = run_once()
-        print(
-            f"[TICK]  events_emitted={emitted} "
-            f"tasks_created={result['tasks_created']} "
-            f"tasks_ran={result['tasks_ran']}"
+        logger.info(
+            "TICK events_emitted=%s tasks_created=%s tasks_ran=%s",
+            emitted,
+            result["tasks_created"],
+            result["tasks_ran"],
         )
 
     def run_forever(self):
         self._running = True
-        print(f"[HERMES] Daemon started. Tick every {self.tick_seconds}s.")
+        logger.info("Hermes daemon started. Tick every %ss", self.tick_seconds)
         while self._running:
             try:
                 self.tick()
             except KeyboardInterrupt:
-                print("[HERMES] Shutting down.")
+                logger.info("Hermes daemon shutting down")
                 self._running = False
                 break
             except Exception:
-                print("[HERMES] Unhandled exception in tick:")
-                traceback.print_exc()
+                logger.exception("Unhandled exception in tick")
             time.sleep(self.tick_seconds)
 
     def run_once(self):

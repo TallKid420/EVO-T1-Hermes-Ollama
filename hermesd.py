@@ -2,6 +2,7 @@ import yaml
 
 from hermes.db.migrations import migrate
 from hermes.daemon.loop import HermesDaemon
+from hermes.utils.terminal_handler import configure_terminal_logging
 from hermes.watchers.ollama_health import OllamaHealthWatcher
 from hermes.watchers.disk_pressure import DiskPressureWatcher
 from hermes.watchers.memory_pressure import MemoryPressureWatcher
@@ -14,6 +15,8 @@ def load_config(path="config/services.yaml"):
 
 
 def main():
+    configure_terminal_logging(log_file="hermes.log")
+
     # Ensure DB is ready
     migrate()
 
