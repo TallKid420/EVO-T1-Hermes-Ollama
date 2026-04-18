@@ -1,5 +1,6 @@
 import yaml
 
+from dotenv import load_dotenv
 from hermes.db.migrations import migrate
 from hermes.daemon.loop import HermesDaemon
 from hermes.utils.terminal_handler import configure_terminal_logging
@@ -15,6 +16,7 @@ def load_config(path="config/services.yaml"):
 
 
 def main():
+    load_dotenv()
     configure_terminal_logging(log_file="hermes.log")
 
     # Ensure DB is ready
