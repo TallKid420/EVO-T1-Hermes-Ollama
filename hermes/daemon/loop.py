@@ -6,7 +6,7 @@ from hermes.watchers.base import BaseWatcher
 from hermes.daemon.state import WatcherState
 from hermes.db import store
 from hermes.db.worker import run_once
-from hermes.notifications.telegram import TelegramNotifier
+from hermes.notifications.handler import NotificationHandler
 
 
 logger = logging.getLogger(__name__)
@@ -61,7 +61,7 @@ class HermesDaemon:
                             message=result.message,
                             severity=result.severity,
                         )
-                        TelegramNotifier().send(f"{result.source}\n{result.message}", severity=result.severity)
+                        NotificationHandler().send_notification(f"{result.source}\n{result.message}", severity=result.severity)
                     else:
                         # State recovered — log as info
                         logger.info("OK %s | %s", result.source, result.message)

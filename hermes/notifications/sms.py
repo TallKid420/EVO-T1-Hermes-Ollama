@@ -5,13 +5,15 @@ SEVERITY_EMOJI = {
 }
 
 class SMSNotifier:
-    def __init__(self):
-        raise NotImplementedError("SMSNotifier is not implemented yet. Please implement the send method.")
+    """Stub notifier for SMS; pending concrete implementation."""
+
+    def __init__(self, config: dict = None):
+        self.config = config or {}
 
     def send(self, message: str, severity: str = "Severity.INFO"):
         emoji = SEVERITY_EMOJI.get(str(severity), "🔔")
         text = f"{emoji} *Hermes*\n{message}"
         try:
-            pass #TODO: Implement SMS sending logic here.
+            raise NotImplementedError("SMSNotifier.send is not implemented yet.")
         except Exception as e:
             print(f"[NOTIFY] SMS failed: {e}")

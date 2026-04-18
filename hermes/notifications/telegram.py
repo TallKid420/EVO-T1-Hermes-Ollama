@@ -18,7 +18,7 @@ class TelegramNotifier:
         emoji = SEVERITY_EMOJI.get(str(severity), "🔔")
         text = f"{emoji} *Hermes*\n{message}"
         try:
-            requests.post(
+            response = requests.post(
                 f"https://api.telegram.org/bot{self.TELEGRAM_TOKEN}/sendMessage",
                 json={
                     "chat_id": self.TELEGRAM_CHAT_ID,
@@ -27,5 +27,10 @@ class TelegramNotifier:
                 },
                 timeout=5,
             )
+            if response.status_code != 200:
+                print(
+                    f"[NOTIFY] Telegram non-200 response: "
+                    f"status={response.status_code}, body={response.text}"
+                )
         except Exception as e:
             print(f"[NOTIFY] Telegram failed: {e}")

@@ -21,6 +21,14 @@ class SafetyManager:
         self.task_risks = self.autonomy_config.get("task_risks", {})
         # Exact command prefixes allowed in shell
         self.allowed_commands = self.autonomy_config.get("allowed_commands", [])
+        # Allowed plugin permission scopes and runtime registration map
+        self.allowed_plugin_permissions = set(
+            self.autonomy_config.get(
+                "plugin_permissions",
+                ["filesystem", "sql", "network", "notifications", "system"],
+            )
+        )
+        self.plugin_permission_registry: Dict[str, List[str]] = {}
 
     def _load_config(self, path):
         try:
@@ -53,3 +61,20 @@ class SafetyManager:
         if any(cmd_str.startswith(allowed) for allowed in self.allowed_commands):
             return True
         raise PermissionError(f"Command not in allowlist: {cmd_str}")
+
+    # --- Plugin Permission Safety ---
+    def check_plugin_permissions(self, required_permissions: List[str]) -> bool:
+        unknown = [
+            p
+            for p in required_permissions
+            if str(p).strip().lower() not in self.allowed_plugin_permissions
+        ]
+        if unknown:
+            raise PermissionError(f"Unknown or disallowed plugin permissions: {unknown}")
+        return True
+
+    def register_plugin_permissions(self, plugin_name: str, required_permissions: List[str]) -> bool:
+        normalized = [str(p).strip().lower() for p in required_permissions]
+        self.check_plugin_permissions(normalized)
+        self.plugin_permission_registry[plugin_name] = normalized
+        return True
