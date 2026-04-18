@@ -114,12 +114,15 @@ def run_one_task(task: Task, executor: AutonomousExecutor) -> Dict[str, Any]:
     try:
         if task.type == "restart_service":
             service = task.payload["service"]
-            result = executor.restart_service(service)
-            # Don't create a new task if one is already queued/blocked for same unit
+
+            # DUPLICATE CHECK — before executing, not after
             existing = store.get_tasks(status=["queued", "blocked", "running"], task_type="restart_service")
-            if any(t.payload.get("service") == service for t in existing):
+            if any(t.id != task.id and t.payload.get("service") == service for t in existing):
                 log.info(f"Skipping duplicate restart_service task for {service}")
-                return
+                store.update_task_status(task.id, "done")
+                return {"status": "skipped_duplicate"}
+
+            result = executor.restart_service(service)
             success = result.get("status") == "success"
             store.add_action(
                 task_id=task.id,
@@ -130,13 +133,43 @@ def run_one_task(task: Task, executor: AutonomousExecutor) -> Dict[str, Any]:
                 success=success,
                 error=None if success else json.dumps(result),
             )
-            if success:
-                store.set_task_result(task.id, result)
-                store.update_task_status(task.id, "done")
-            else:
-                store.set_task_result(task.id, result)
-                store.update_task_status(task.id, "failed")
+            store.set_task_result(task.id, result)
+            store.update_task_status(task.id, "done" if success else "failed")
             return result
+
+        elif task.type == "cleanup_cache":
+            path = task.payload.get("path", "/var/lib/hermes/cache")
+            result = executor.cleanup_path(path)
+            success = result.get("status") == "success"
+            store.add_action(
+                task_id=task.id,
+                tool="autonomous_executor",
+                action="cleanup_path",
+                input_={"path": path},
+                output=result,
+                success=success,
+                error=None if success else json.dumps(result),
+            )
+            store.set_task_result(task.id, result)
+            store.update_task_status(task.id, "done" if success else "failed")
+            return result
+
+        elif task.type == "send_notification":
+            from hermes.notifications.telegram import send
+            msg = task.payload.get("message", task.title)
+            send(msg, severity="Severity.INFO")
+            store.add_action(
+                task_id=task.id,
+                tool="telegram",
+                action="send",
+                input_={"message": msg},
+                output={"status": "sent"},
+                success=True,
+                error=None,
+            )
+            store.set_task_result(task.id, {"status": "sent"})
+            store.update_task_status(task.id, "done")
+            return {"status": "sent"}
 
         else:
             store.add_action(
