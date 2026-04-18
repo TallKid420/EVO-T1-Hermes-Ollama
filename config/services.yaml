@@ -6,7 +6,7 @@ managed_services:
     cooldown_seconds: 600
 
   - name: hermes
-    systemd_unit: hermesd.service
+    systemd_unit: hermes.service
     auto_restart: false
     max_restarts_per_hour: 3
     cooldown_seconds: 600

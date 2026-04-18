@@ -1,4 +1,4 @@
-import requests, os
+import requests, yaml, os
 
 SEVERITY_EMOJI = {
     "Severity.CRITICAL": "🚨",
@@ -7,11 +7,14 @@ SEVERITY_EMOJI = {
 }
 
 class TelegramNotifier:
-    def __init__(self):
-        self.TELEGRAM_TOKEN = os.getenv("TELEGRAM_TOKEN")
-        self.TELEGRAM_CHAT_ID = os.getenv("TELEGRAM_CHAT_ID")
+    def __init__(self, config: dict = None):
+        self.TELEGRAM_TOKEN = config.get("token")
+        self.TELEGRAM_CHAT_ID = config.get("chat_id")
 
     def send(self, message: str, severity: str = "Severity.INFO"):
+        if not self.TELEGRAM_TOKEN or not self.TELEGRAM_CHAT_ID:
+            print("[NOTIFY] Telegram: missing TOKEN or CHAT_ID")
+            return
         emoji = SEVERITY_EMOJI.get(str(severity), "🔔")
         text = f"{emoji} *Hermes*\n{message}"
         try:

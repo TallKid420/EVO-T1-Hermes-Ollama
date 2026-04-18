@@ -12,7 +12,7 @@ from hermes.executor.autonomous_executor import AutonomousExecutor
 from hermes.core.permissions import ApprovalRequired
 from hermes.core.permissions import Permissions
 from hermes.planner.agent import Planner
-from hermes.notifications.telegram import TelegramNotifier
+from hermes.notifications.handler import NotificationHandler
 from hermes.db.conn import connect
 from datetime import datetime
 
@@ -162,7 +162,7 @@ def run_one_task(task: Task, executor: AutonomousExecutor) -> Dict[str, Any]:
 
         elif task.type == "send_notification":
             msg = task.payload.get("message", task.title)
-            TelegramNotifier().send(msg, severity="Severity.INFO")
+            NotificationHandler().send_notification(msg, severity="Severity.INFO")
             store.add_action(
                 task_id=task.id,
                 tool="telegram",
