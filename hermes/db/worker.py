@@ -11,6 +11,7 @@ from hermes.db.models import Task
 from hermes.executor.autonomous_executor import AutonomousExecutor
 from hermes.core.permissions import ApprovalRequired
 from hermes.core.permissions import Permissions
+from hermes.planner.agent import Planner
 
 
 def load_services_config(path: str = "config/services.yaml") -> Dict[str, Any]:
@@ -19,25 +20,62 @@ def load_services_config(path: str = "config/services.yaml") -> Dict[str, Any]:
 
 
 def _event_to_task_policy(event_payload: Dict[str, Any], event_type: str, severity: str, event_id: int) -> Optional[int]:
-    # Very small v1 policy set (expand later in Planner phase)
-    if event_type == "service_unhealthy":
-        service = event_payload.get("service")
-        if service:
-            _perms = Permissions()
-            action_cfg = _perms.config.get("autonomous_actions", {}).get("restart_service", {})
-            needs_approval = action_cfg.get("requires_approval", False)
+    planner = Planner()
 
-            title = f"Restart service: {service}"
-            payload = {"service": service, "reason": "service_unhealthy_event"}
-            return store.create_task(
-                status="blocked" if needs_approval else "queued",
-                priority=100 if severity == "critical" else 50,
-                type_="restart_service",
-                title=title,
-                payload=payload,
-                event_id=event_id,
-                requires_approval=needs_approval,
-            )
+    plan = planner.plan(
+        event={
+            "type": event_type,
+            "severity": severity,
+            "message": f"{event_type}: {event_payload}",
+            "payload": event_payload,
+        },
+        system_status={}
+    )
+
+    action = plan["action"]
+    action_args = plan.get("action_args", {})
+    needs_approval = plan.get("requires_approval", False)
+    risk_score = plan.get("risk_score", 5)
+
+    # Map plan → task
+    if action == "restart_service":
+        service = action_args.get("service") or event_payload.get("service")
+        if not service:
+            return None
+        return store.create_task(
+            status="blocked" if needs_approval else "queued",
+            priority=100 if risk_score <= 3 else 50,
+            type_="restart_service",
+            title=f"Restart service: {service}",
+            payload={"service": service, "reason": event_type},
+            event_id=event_id,
+            requires_approval=needs_approval,
+        )
+
+    elif action == "cleanup_cache":
+        path = action_args.get("path", "/var/lib/hermes/cache")
+        return store.create_task(
+            status="blocked" if needs_approval else "queued",
+            priority=50,
+            type_="cleanup_cache",
+            title=f"Cleanup cache: {path}",
+            payload={"path": path, "reason": event_type},
+            event_id=event_id,
+            requires_approval=needs_approval,
+        )
+
+    elif action in ("send_notification", "notify_user"):
+        message = action_args.get("message", plan.get("reasoning", event_type))
+        return store.create_task(
+            status="queued",
+            priority=10,
+            type_="send_notification",
+            title=f"Notify: {message[:60]}",
+            payload={"message": message, "reason": event_type},
+            event_id=event_id,
+            requires_approval=False,
+        )
+
     return None
 
 
