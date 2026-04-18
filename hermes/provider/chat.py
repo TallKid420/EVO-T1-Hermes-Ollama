@@ -10,7 +10,7 @@ class ChatProvider:
     def send_message(self, prompt: str, cfg: Dict[str, Any], format: str | None = None, stream: bool = False) -> tuple[str, list[dict], bool]:
         provider = cfg.get("provider")
         if provider == "ollama":
-            return OllamaChatProvider().ollama_chat(
+            return OllamaChatProvider().ollama_generate(
                 prompt=prompt, 
                 endpoint=cfg.get("endpoint"), 
                 model=cfg.get("model"), 
@@ -23,7 +23,7 @@ class OllamaChatProvider(ChatProvider):
     def __init__(self):
         super().__init__()
 
-    def ollama_chat(self, prompt: str, endpoint: str, model: str, timeout_seconds: int, stream: bool, _format = None) -> tuple[str, list[dict], bool]:
+    def ollama_generate(self, prompt: str, endpoint: str, model: str, timeout_seconds: int, stream: bool, _format: str = None) -> tuple[str, list[dict], bool]:
         if _format is None:
             response = requests.post(
                 f"{endpoint}/api/generate",

@@ -13,6 +13,10 @@ def load_planner_config(path: str = "config/agents.yaml") -> Dict[str, Any]:
     except FileNotFoundError:
         return {}
 
+# class ResponseJson(BaseModel):
+#     action: str
+#     reasoning: str
+#     risk_score: int
 
 class Planner:
     def __init__(self, config_path: str = "config/agents.yaml"):
@@ -43,18 +47,19 @@ System Status: {json.dumps(system_status)}
 ### Rules
 1. Only recommend actions from: [{allowed_actions_text}]
 {rules_text}
+
+### Your Plan (JSON)
+{{
+  "action": "string",
+  "requires_approval": boolean,
+  "reasoning": "string",
+  "risk_score": 1-10
+}}
 """
-        _format = """
-        {
-            "action": "string",
-            "reasoning": "string",
-            "risk_score": 1-10
-        }
-        """
 
         return ChatProvider().send_message(
             prompt=prompt, 
             cfg=self.cfg, 
-            format=_format, 
+            format="json", 
             stream=False
         )

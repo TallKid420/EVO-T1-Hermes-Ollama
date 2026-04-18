@@ -1,6 +1,6 @@
 system_agents:
   planner:
-    model: "gemma-2b:latest"
+    model: "llama3.2:3b"
     provider: "ollama"
     endpoint: "http://localhost:11434"
     timeout_seconds: 15
