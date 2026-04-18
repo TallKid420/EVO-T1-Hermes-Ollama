@@ -68,6 +68,19 @@ def cmd_tasks_approve(args):
     approve_task(args.task_id)
     print(f"Task {args.task_id} approved — will run on next tick.")
 
+
+def cmd_tasks_errors(args):
+    tasks = store.list_tasks(limit=args.limit)
+    found = False
+    for t in tasks:
+        actions = store.list_actions(task_id=t.id)
+        for a in actions:
+            if not a.success:
+                print(f"Task [{t.id}] {t.type} → error: {a.error}")
+                found = True
+    if not found:
+        print("No errors found.")
+
 def cmd_worker_run_once(_args):
     res = run_once()
     print(json.dumps(res, indent=2))
@@ -122,6 +135,10 @@ def build_parser():
     tk_approve = tk_sub.add_parser("approve", help="Approve a blocked task")
     tk_approve.add_argument("task_id", type=int)
     tk_approve.set_defaults(func=cmd_tasks_approve)
+
+    tk_errors = tk_sub.add_parser("errors", help="Show all failed task errors")
+    tk_errors.add_argument("--limit", type=int, default=50)
+    tk_errors.set_defaults(func=cmd_tasks_errors)
 
     ac = sub.add_parser("actions")
     ac_sub = ac.add_subparsers(dest="sub", required=True)

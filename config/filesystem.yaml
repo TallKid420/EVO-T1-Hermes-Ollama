@@ -3,7 +3,9 @@ safe_paths:
   - /var/log/hermes
 
 restricted_paths:
-  - /
   - /home
   - /etc
   - /usr
+  - /boot
+  - /sys
+  - /proc
