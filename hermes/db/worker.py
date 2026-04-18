@@ -12,6 +12,9 @@ from hermes.executor.autonomous_executor import AutonomousExecutor
 from hermes.core.permissions import ApprovalRequired
 from hermes.core.permissions import Permissions
 from hermes.planner.agent import Planner
+from hermes.notifications.telegram import TelegramNotifier
+from hermes.db.conn import connect
+from datetime import datetime
 
 
 def load_services_config(path: str = "config/services.yaml") -> Dict[str, Any]:
@@ -93,8 +96,6 @@ def create_tasks_from_recent_events(limit: int = 50) -> int:
                 output={"task_id": task_id},
                 success=True,
             )
-            from hermes.db.conn import connect
-            from datetime import datetime
             conn = connect()
             try:
                 conn.execute(
@@ -116,7 +117,7 @@ def run_one_task(task: Task, executor: AutonomousExecutor) -> Dict[str, Any]:
             service = task.payload["service"]
 
             # DUPLICATE CHECK — before executing, not after
-            existing = store.get_tasks(status=["queued", "blocked", "running"], task_type="restart_service")
+            existing = store.get_task(status=["queued", "blocked", "running"], task_type="restart_service")
             if any(t.id != task.id and t.payload.get("service") == service for t in existing):
                 log.info(f"Skipping duplicate restart_service task for {service}")
                 store.update_task_status(task.id, "done")
@@ -155,9 +156,8 @@ def run_one_task(task: Task, executor: AutonomousExecutor) -> Dict[str, Any]:
             return result
 
         elif task.type == "send_notification":
-            from hermes.notifications.telegram import send
             msg = task.payload.get("message", task.title)
-            send(msg, severity="Severity.INFO")
+            TelegramNotifier().send(msg, severity="Severity.INFO")
             store.add_action(
                 task_id=task.id,
                 tool="telegram",
