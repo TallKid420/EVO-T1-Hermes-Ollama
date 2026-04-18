@@ -1,0 +1,20 @@
+# Hermes EVO-T1 — Requirements
+# Install: pip install -r requirements.txt
+
+# HTTP + API
+requests>=2.31.0
+
+# Config
+pyyaml>=6.0.1
+
+# Environment secrets
+python-dotenv>=1.0.0
+
+# System metrics (disk, memory, processes)
+psutil>=5.9.8
+
+# Telegram notifications
+python-telegram-bot>=20.7
+
+# Structured logging (optional but used in utils)
+# rich>=13.7.0  # uncomment if you add Rich terminal output
