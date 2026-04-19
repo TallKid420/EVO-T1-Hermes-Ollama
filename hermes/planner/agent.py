@@ -38,7 +38,7 @@ class Planner:
         self.rules = cfg.get("rules")
         self.cfg = cfg
 
-    def plan(self, event: Dict[str, Any], system_status: Dict[str, Any]) -> Dict[str, Any]:
+    def plan(self, event: dict, system_status: dict, action_history: list = []) -> dict:
         event_type = event.get("type", "")
         payload = event.get("payload", {})
 
@@ -62,6 +62,11 @@ class Planner:
             f"{idx}. {rule}" for idx, rule in enumerate(self.rules, start=1)
         )
 
+        history_text = "None" if not action_history else "\n".join(
+            f"- [{h['timestamp']}] Action: {h['action']} → Result: {h['result']}"
+            for h in action_history[-self.max_history:]
+        )
+
         prompt = f"""
 ### Task
 You are the Hermes Planner Agent for a GMKtec EVO-T1 Ubuntu server.
@@ -73,6 +78,9 @@ event_type: {event_type}
 severity: {event.get("severity")}
 message: {event.get("message")}
 payload: {json.dumps(payload)}
+
+### Recent Action History
+{history_text}
 
 ### System Status
 {json.dumps(system_status)}

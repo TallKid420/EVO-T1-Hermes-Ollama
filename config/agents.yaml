@@ -4,15 +4,19 @@ system_agents:
     provider: "ollama"
     endpoint: "http://localhost:11434"
     timeout_seconds: 15
+    max_history: 5
     allowed_actions:
       - restart_service
       - cleanup_cache
       - send_notification
       - delete_files
       - notify_user
+      - verify_service
     rules:
-      - "If risk is high (for example deleting non-cache files), set requires_approval=true"
+      - "If risk_score >= 7, set requires_approval to true"
+      - "If the same action has failed more than 2 times in history, escalate instead of retrying"
       - "Always respond in valid JSON only"
+      - "Never suggest actions outside the allowed_actions list"
 
 custom_agents:
   # Example of a custom agent configuration
