@@ -63,17 +63,15 @@ class VerifierAgent:
 
     def _verify_cleanup(self, task: dict, result: dict) -> VerificationResult:
         # Rule: just check the command exited 0
-        if result.get("exit_code") == 0 or result.get("status") == "success":
+        if result.get("exit_code") == 0:
             return VerificationResult(success=True, method="rule_based", message="Cleanup exited cleanly")
         return self._llm_fallback(task, result, f"Cleanup exit code: {result.get('exit_code')}")
 
     def _llm_fallback(self, task: dict, result: dict, failure_evidence: str) -> VerificationResult:
         # Ask the planner LLM what to do next
         event = {
-            "type": "verification_failed",
             "message": f"Verification failed after action '{task['action']}'. Evidence: {failure_evidence}",
-            "severity": "critical",
-            "payload": {"task": task, "evidence": failure_evidence},
+            "severity": "high"
         }
         llm_plan = self.planner.plan(event=event, system_status=result)
         suggested_action = llm_plan.get("action")

@@ -12,7 +12,7 @@ from hermes.executor.autonomous_executor import AutonomousExecutor
 from hermes.core.permissions import ApprovalRequired
 from hermes.planner.agent import Planner
 from hermes.notifications.handler import NotificationHandler
-from hermes.agents.verifier import VerifierAgent
+from hermes.db.verifier import VerifierAgent
 from hermes.db.conn import connect
 from datetime import datetime
 
