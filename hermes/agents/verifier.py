@@ -32,7 +32,14 @@ class VerifierAgent:
         return VerificationResult(success=True, method="rule_based", message="No rule defined, assumed success")
 
     def _verify_service(self, task: dict, result: dict) -> VerificationResult:
-        service = task["args"].get("service")
+        service = task.get("action_args", {}).get("service")
+        if not service:
+            return VerificationResult(
+                success=False,
+                method="rule_based",
+                message="Missing service in action_args",
+                requires_approval=True,
+            )
 
         # Rule 1: systemctl check
         status = subprocess.run(
@@ -67,7 +74,7 @@ class VerifierAgent:
             "severity": "high"
         }
         llm_plan = self.planner.plan(event=event, system_status=result)
-        suggested_action = llm_plan.get("plan", [{}])[0].get("action")
+        suggested_action = llm_plan.get("action")
 
         # Validate against allowlist
         if suggested_action not in self.allowlist:

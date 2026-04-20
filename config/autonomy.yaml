@@ -29,7 +29,6 @@ allowed_commands:
   - "systemctl restart"
   - "systemctl status"
   - "systemctl is-active"
-  - "rm -rf"
 
 task_risks:
   restart_service: "LOW"

@@ -30,6 +30,7 @@ SURVIVAL_OVERRIDES = {
 class Planner:
     def __init__(self, config_path: str = "config/agents.yaml"):
         cfg = load_planner_config(config_path)
+        self.max_history = int(cfg.get("max_history"))
         self.model = cfg.get("model")
         self.provider = cfg.get("provider")
         self.endpoint = cfg.get("endpoint")

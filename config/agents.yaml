@@ -9,7 +9,6 @@ system_agents:
       - restart_service
       - cleanup_cache
       - send_notification
-      - delete_files
       - notify_user
       - verify_service
     rules:

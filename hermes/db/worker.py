@@ -10,7 +10,6 @@ from hermes.db import store
 from hermes.db.models import Task
 from hermes.executor.autonomous_executor import AutonomousExecutor
 from hermes.core.permissions import ApprovalRequired
-from hermes.core.permissions import Permissions
 from hermes.planner.agent import Planner
 from hermes.notifications.handler import NotificationHandler
 from hermes.db.conn import connect
