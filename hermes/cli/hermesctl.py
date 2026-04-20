@@ -81,6 +81,17 @@ def cmd_tasks_errors(args):
     if not found:
         print("No errors found.")
 
+def cmd_tasks_queue(args):
+    payload = json.loads(args.payload) if args.payload else {}
+    task_id = store.create_task(
+        type_=args.type,
+        title=f"Manual: {args.type}",
+        payload=payload,
+        priority=args.priority,
+        source="manual",
+    )
+    print(f"OK: task queued id={task_id}")
+
 def cmd_worker_run_once(_args):
     res = run_once()
     print(json.dumps(res, indent=2))
@@ -151,6 +162,12 @@ def build_parser():
     wk_sub = wk.add_subparsers(dest="sub", required=True)
     wk_once = wk_sub.add_parser("run-once")
     wk_once.set_defaults(func=cmd_worker_run_once)
+
+    tk_queue = tk_sub.add_parser("queue", help="Manually queue a task")
+    tk_queue.add_argument("type", help="Task type e.g. restart_service")
+    tk_queue.add_argument("--payload", default="{}")
+    tk_queue.add_argument("--priority", type=int, default=5)
+    tk_queue.set_defaults(func=cmd_tasks_queue)
 
     return p
 
