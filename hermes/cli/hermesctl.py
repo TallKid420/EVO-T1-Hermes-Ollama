@@ -84,11 +84,11 @@ def cmd_tasks_errors(args):
 def cmd_tasks_queue(args):
     payload = json.loads(args.payload) if args.payload else {}
     task_id = store.create_task(
+        status="queued",
         type_=args.type,
         title=f"Manual: {args.type}",
         payload=payload,
         priority=args.priority,
-        source="manual",
     )
     print(f"OK: task queued id={task_id}")
 
