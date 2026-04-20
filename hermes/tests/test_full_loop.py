@@ -1,6 +1,11 @@
 # tests/test_full_loop.py
+import sys
+from pathlib import Path
+
+sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
+
 from unittest.mock import patch, MagicMock
-from hermes.agents.planner.agent import Planner
+from hermes.planner.agent import Planner
 from hermes.agents.verifier import VerifierAgent
 
 def test_full_loop():
@@ -32,7 +37,7 @@ def test_full_loop():
         mock_sub.return_value = MagicMock(stdout="active")
         mock_get.return_value = MagicMock(status_code=200)
 
-        verification = verifier.verify(task=plan, exec_result=exec_result)
+        verification = verifier.verify(task=plan, result=exec_result)
 
     print(f"Verification: {verification}")
     assert verification.success == True

@@ -1,13 +1,18 @@
 import yaml
+import logging
 
 from dotenv import load_dotenv
 from hermes.db.migrations import migrate
 from hermes.daemon.loop import HermesDaemon
+from hermes.plugins.loader import PluginManager
 from hermes.utils.terminal_handler import configure_terminal_logging
 from hermes.watchers.ollama_health import OllamaHealthWatcher
 from hermes.watchers.disk_pressure import DiskPressureWatcher
 from hermes.watchers.memory_pressure import MemoryPressureWatcher
 from hermes.watchers.service_status import ServiceStatusWatcher
+
+
+log = logging.getLogger(__name__)
 
 
 def load_config(path="config/services.yaml"):
@@ -37,8 +42,14 @@ def main():
         tick_seconds=10,
         dedup_repeat_seconds=300,
     )
+    plugin_manager = PluginManager()
+    plugin_manager.load_plugins()
 
-    daemon.run_forever()
+    try:
+        daemon.run_forever()
+    finally:
+        log.info("Shutting down plugins")
+        plugin_manager.shutdown_all()
 
 
 if __name__ == "__main__":

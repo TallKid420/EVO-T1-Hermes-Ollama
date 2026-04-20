@@ -1,4 +1,9 @@
 # tests/test_verifier_rules.py
+import sys
+from pathlib import Path
+
+sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
+
 from unittest.mock import patch, MagicMock
 from hermes.agents.verifier import VerifierAgent
 
@@ -23,7 +28,7 @@ def test_verify_service_healthy():
         mock_sub.return_value = MagicMock(stdout="active")
         mock_get.return_value = MagicMock(status_code=200)
 
-        result = verifier.verify(task=task, exec_result=exec_result)
+        result = verifier.verify(task=task, result=exec_result)
 
     assert result.success == True, f"Expected success, got: {result.message}"
     assert result.method == "rule_based"
@@ -59,7 +64,7 @@ def test_verify_service_unhealthy():
     with patch("subprocess.run") as mock_sub:
         mock_sub.return_value = MagicMock(stdout="inactive")
 
-        result = verifier.verify(task=task, exec_result=exec_result)
+        result = verifier.verify(task=task, result=exec_result)
 
     assert result.success == False
     assert result.method == "llm_fallback"

@@ -8,12 +8,9 @@ class GmailNotifier:
     """Stub notifier for Gmail; pending concrete implementation."""
 
     def __init__(self, config: dict = None):
-        self.config = config or {}
+        if not isinstance(config, dict) or not config:
+            raise ValueError("Missing required gmail notifier config")
+        self.config = config
 
     def send(self, message: str, severity: str = "Severity.INFO"):
-        emoji = SEVERITY_EMOJI.get(str(severity), "🔔")
-        text = f"{emoji} *Hermes*\n{message}"
-        try:
-            raise NotImplementedError("GmailNotifier.send is not implemented yet.")
-        except Exception as e:
-            print(f"[NOTIFY] SMS failed: {e}")
+        raise NotImplementedError("GmailNotifier.send is not implemented yet.")

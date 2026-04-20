@@ -249,6 +249,66 @@ def approve_task(task_id: int):
     finally:
         conn.close()
 
+
+def claim_next_queued_task() -> Optional[Task]:
+    """Atomically claim the next queued task and mark it running."""
+    conn = connect()
+    try:
+        conn.execute("BEGIN IMMEDIATE")
+        row = conn.execute(
+            """
+            SELECT id
+            FROM tasks
+            WHERE status = 'queued'
+            ORDER BY priority DESC, id ASC
+            LIMIT 1
+            """
+        ).fetchone()
+
+        if row is None:
+            conn.commit()
+            return None
+
+        task_id = int(row["id"])
+        cur = conn.execute(
+            """
+            UPDATE tasks
+            SET status = 'running',
+                attempts = attempts + 1,
+                updated_at = ?
+            WHERE id = ? AND status = 'queued'
+            """,
+            (_now(), task_id),
+        )
+        if cur.rowcount != 1:
+            conn.commit()
+            return None
+
+        claimed = conn.execute("SELECT * FROM tasks WHERE id = ?", (task_id,)).fetchone()
+        conn.commit()
+
+        if claimed is None:
+            return None
+
+        return Task(
+            id=claimed["id"],
+            created_at=claimed["created_at"],
+            updated_at=claimed["updated_at"],
+            status=claimed["status"],
+            priority=claimed["priority"],
+            type=claimed["type"],
+            title=claimed["title"],
+            payload=json.loads(claimed["payload_json"]),
+            result=json.loads(claimed["result_json"]) if claimed["result_json"] else None,
+            event_id=claimed["event_id"],
+            requires_approval=bool(claimed["requires_approval"]),
+            approved_at=claimed["approved_at"],
+            blocked_reason=claimed["blocked_reason"],
+            attempts=claimed["attempts"],
+        )
+    finally:
+        conn.close()
+
 # -------- Actions (Audit Log) --------
 
 def add_action(

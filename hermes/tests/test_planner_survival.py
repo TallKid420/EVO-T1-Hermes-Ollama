@@ -1,5 +1,10 @@
 # tests/test_planner_survival.py
-from hermes.agents.planner.agent import Planner
+import sys
+from pathlib import Path
+
+sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
+
+from hermes.planner.agent import Planner
 
 def test_survival_override():
     planner = Planner()

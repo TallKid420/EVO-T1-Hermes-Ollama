@@ -1,16 +1,16 @@
 import json
 import yaml
-from typing import Dict, Any
+from typing import Dict, Any, Optional, List
 from hermes.provider.chat import ChatProvider
 
 
 def load_planner_config(path: str = "config/agents.yaml") -> Dict[str, Any]:
-    try:
-        with open(path, "r") as f:
-            data = yaml.safe_load(f) or {}
-            return data.get("system_agents", {}).get("planner", {})
-    except FileNotFoundError:
-        return {}
+    with open(path, "r") as f:
+        data = yaml.safe_load(f) or {}
+    planner_cfg = data.get("system_agents", {}).get("planner")
+    if not isinstance(planner_cfg, dict):
+        raise ValueError("Missing required planner config at system_agents.planner")
+    return planner_cfg
 
 
 # Survival reflexes — LLM is NOT consulted for these.
@@ -30,16 +30,73 @@ SURVIVAL_OVERRIDES = {
 class Planner:
     def __init__(self, config_path: str = "config/agents.yaml"):
         cfg = load_planner_config(config_path)
-        self.max_history = int(cfg.get("max_history"))
-        self.model = cfg.get("model")
-        self.provider = cfg.get("provider")
-        self.endpoint = cfg.get("endpoint")
-        self.timeout_seconds = int(cfg.get("timeout_seconds"))
-        self.allowed_actions = cfg.get("allowed_actions")
-        self.rules = cfg.get("rules")
+        required_fields = [
+            "max_history",
+            "model",
+            "provider",
+            "endpoint",
+            "timeout_seconds",
+            "allowed_actions",
+            "rules",
+        ]
+        missing = [field for field in required_fields if field not in cfg]
+        if missing:
+            raise ValueError(f"Missing required planner config field(s): {missing}")
+
+        self.max_history = int(cfg["max_history"])
+        self.model = str(cfg["model"])
+        self.provider = str(cfg["provider"])
+        self.endpoint = str(cfg["endpoint"])
+        self.timeout_seconds = int(cfg["timeout_seconds"])
+        self.allowed_actions = list(cfg["allowed_actions"])
+        self.rules = list(cfg["rules"])
         self.cfg = cfg
 
-    def plan(self, event: dict, system_status: dict, action_history: list = []) -> dict:
+        if not self.allowed_actions:
+            raise ValueError("planner.allowed_actions cannot be empty")
+        if not self.rules:
+            raise ValueError("planner.rules cannot be empty")
+
+    def _normalize_plan(self, raw_plan: Dict[str, Any], event_message: str, payload: Dict[str, Any]) -> Dict[str, Any]:
+        plan = dict(raw_plan)
+        if not isinstance(plan.get("action_args"), dict):
+            plan["action_args"] = {}
+        plan["requires_approval"] = bool(plan.get("requires_approval", False))
+        plan["reasoning"] = str(plan.get("reasoning", ""))
+
+        try:
+            plan["risk_score"] = int(plan.get("risk_score", 5))
+        except (TypeError, ValueError):
+            plan["risk_score"] = 5
+        plan["risk_score"] = max(1, min(10, plan["risk_score"]))
+
+        if plan.get("action") not in self.allowed_actions:
+            plan["action"] = "send_notification"
+            plan["action_args"] = {"message": f"Planner chose invalid action. Event: {event_message}"}
+            plan["reasoning"] = "Safety: invalid action replaced with notification."
+
+        if plan.get("action") == "restart_service" and not plan.get("action_args", {}).get("service"):
+            svc = payload.get("service")
+            if svc:
+                plan["action_args"] = {"service": svc}
+            else:
+                plan["action"] = "send_notification"
+                plan["action_args"] = {
+                    "message": f"restart_service planned but no service name found. Event: {event_message}"
+                }
+
+        if plan.get("action") == "delete_files":
+            plan["requires_approval"] = True
+
+        return plan
+
+    def plan(
+        self,
+        event: Dict[str, Any],
+        system_status: Dict[str, Any],
+        action_history: Optional[List[Dict[str, Any]]] = None,
+    ) -> Dict[str, Any]:
+        action_history = action_history or []
         event_type = event.get("type", "")
         payload = event.get("payload", {})
 
@@ -101,12 +158,15 @@ payload: {json.dumps(payload)}
 """
 
         try:
-            plan = ChatProvider().send_message(
+            raw_plan = ChatProvider().send_message(
                 prompt=prompt,
                 cfg=self.cfg,
                 format="json",
                 stream=False,
             )
+            if not isinstance(raw_plan, dict):
+                raise ValueError(f"Planner provider returned non-dict payload: {type(raw_plan).__name__}")
+            plan = self._normalize_plan(raw_plan, event.get("message", ""), payload)
         except Exception as e:
             # LLM failed — fall back to notify so at least you know
             return {
@@ -117,29 +177,5 @@ payload: {json.dumps(payload)}
                 "risk_score": 1,
                 "_fallback": True,
             }
-
-        # --- Safety layer (laws of reality) ---
-        # Enforce invariants the LLM must not violate.
-        # Not logic — just constraints.
-
-        # 1. action must be in allowlist
-        if plan.get("action") not in self.allowed_actions:
-            plan["action"] = "send_notification"
-            plan["action_args"] = {"message": f"Planner chose invalid action. Event: {event.get('message')}"}
-            plan["reasoning"] = "Safety: invalid action replaced with notification."
-
-        # 2. restart_service must always have a service name
-        if plan.get("action") == "restart_service":
-            if not plan.get("action_args", {}).get("service"):
-                svc = payload.get("service")
-                if svc:
-                    plan["action_args"] = {"service": svc}
-                else:
-                    plan["action"] = "send_notification"
-                    plan["action_args"] = {"message": f"restart_service planned but no service name found. Event: {event.get('message')}"}
-
-        # 3. delete_files must always require approval
-        if plan.get("action") == "delete_files":
-            plan["requires_approval"] = True
 
         return plan

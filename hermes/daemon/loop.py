@@ -39,6 +39,7 @@ class HermesDaemon:
         self.tick_seconds = tick_seconds
         self.dedup_repeat_seconds = dedup_repeat_seconds
         self.state = WatcherState()
+        self.notification_handler = NotificationHandler()
         self._running = False
 
     def _run_watchers(self) -> int:
@@ -61,7 +62,10 @@ class HermesDaemon:
                             message=result.message,
                             severity=result.severity,
                         )
-                        NotificationHandler().send_notification(f"{result.source}\n{result.message}", severity=result.severity)
+                        self.notification_handler.send_notification(
+                            f"{result.source}\n{result.message}",
+                            severity=result.severity,
+                        )
                     else:
                         # State recovered — log as info
                         logger.info("OK %s | %s", result.source, result.message)

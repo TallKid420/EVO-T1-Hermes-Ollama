@@ -1,5 +1,12 @@
 # tests/test_planner_llm.py
-from hermes.agents.planner.agent import Planner
+import sys
+from pathlib import Path
+
+sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
+
+from unittest.mock import patch
+
+from hermes.planner.agent import Planner
 
 def test_llm_plan():
     planner = Planner()
@@ -17,7 +24,15 @@ def test_llm_plan():
         "disk_percent": 60
     }
 
-    result = planner.plan(event=event, system_status=system_status)
+    mock_plan = {
+        "action": "send_notification",
+        "action_args": {"message": "CPU high"},
+        "requires_approval": False,
+        "reasoning": "Notify for now",
+        "risk_score": 3,
+    }
+    with patch("hermes.planner.agent.ChatProvider.send_message", return_value=mock_plan):
+        result = planner.plan(event=event, system_status=system_status)
 
     # Schema checks
     assert "action" in result, "Missing action"

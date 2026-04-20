@@ -2,18 +2,21 @@ from hermes.notifications.telegram import TelegramNotifier
 from hermes.notifications.gmail import GmailNotifier
 from hermes.notifications.sms import SMSNotifier
 import yaml
+import logging
+
+
+log = logging.getLogger(__name__)
 
 def load_plugins_config(path: str = "config/plugins.yaml") -> dict:
-    try:
-        with open(path, "r") as f:
-            return yaml.safe_load(f) or {}
-    except FileNotFoundError:
-        return {}
+    with open(path, "r") as f:
+        return yaml.safe_load(f) or {}
 
 class NotificationHandler:
     def __init__(self):
         self.config = load_plugins_config()
-        active = self.config.get("Active", {})
+        active = self.config.get("active") or self.config.get("Active", {})
+        if not isinstance(active, dict):
+            raise ValueError("Missing or invalid notification config key: active")
         self.notifiers = {}
         if active.get("telegram"):
             self.notifiers["telegram"] = TelegramNotifier(
@@ -30,8 +33,15 @@ class NotificationHandler:
 
 
     def send_notification(self, message: str, severity: str = "Severity.INFO"):
-        for notifier in self.notifiers:
+        if not self.notifiers:
+            log.warning("No active notifiers configured")
+            return
+
+        for name, notifier in self.notifiers.items():
             try:
-                n = self.notifiers[notifier].send(message, severity)
+                notifier.send(message, severity)
+                log.info("Notifier '%s' sent message", name)
+            except NotImplementedError as e:
+                log.warning("Notifier '%s' not implemented: %s", name, e)
             except Exception as e:
-                print(f"[NotificationHandler] {notifier} failed: {e}")
+                log.exception("Notifier '%s' failed: %s", name, e)

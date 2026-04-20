@@ -1,4 +1,9 @@
-import requests, yaml, os
+import logging
+
+import requests
+
+
+log = logging.getLogger(__name__)
 
 SEVERITY_EMOJI = {
     "Severity.CRITICAL": "🚨",
@@ -8,13 +13,19 @@ SEVERITY_EMOJI = {
 
 class TelegramNotifier:
     def __init__(self, config: dict = None):
+        if not isinstance(config, dict):
+            raise ValueError("TelegramNotifier config must be a dict")
         self.TELEGRAM_TOKEN = config.get("token")
         self.TELEGRAM_CHAT_ID = config.get("chat_id")
+        missing = []
+        if not self.TELEGRAM_TOKEN:
+            missing.append("token")
+        if not self.TELEGRAM_CHAT_ID:
+            missing.append("chat_id")
+        if missing:
+            raise ValueError(f"Missing required telegram config field(s): {missing}")
 
     def send(self, message: str, severity: str = "Severity.INFO"):
-        if not self.TELEGRAM_TOKEN or not self.TELEGRAM_CHAT_ID:
-            print("[NOTIFY] Telegram: missing TOKEN or CHAT_ID")
-            return
         emoji = SEVERITY_EMOJI.get(str(severity), "🔔")
         text = f"{emoji} *Hermes*\n{message}"
         try:
@@ -28,9 +39,10 @@ class TelegramNotifier:
                 timeout=5,
             )
             if response.status_code != 200:
-                print(
-                    f"[NOTIFY] Telegram non-200 response: "
-                    f"status={response.status_code}, body={response.text}"
+                log.error(
+                    "Telegram non-200 response: status=%s body=%s",
+                    response.status_code,
+                    response.text,
                 )
         except Exception as e:
-            print(f"[NOTIFY] Telegram failed: {e}")
+            log.exception("Telegram send failed: %s", e)
