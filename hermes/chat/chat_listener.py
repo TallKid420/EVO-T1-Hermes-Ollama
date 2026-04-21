@@ -14,12 +14,11 @@ mapping = {
     "sms": None,
 }
 
-PLUGINCFG = load_config("config/plugins.yaml")
-AGENTCFG = load_config("config/agents.yaml")
-
 class ChatListener:
     def __init__(self):
-        active = PLUGINCFG.get("active", {}).get("communication")
+        self.plugincfg = load_config("config/plugins.yaml")
+        self.agentcfg = load_config("config/agents.yaml")
+        active = self.plugincfg.get("active", {}).get("communication")
         if not isinstance(active, dict):
             raise ValueError("Missing or invalid notification config key: active.communication")
         self.notifiers = {}
@@ -27,7 +26,7 @@ class ChatListener:
             cls = mapping.get(name)
             if settings.get("input") and cls is not None:
                 self.notifiers[name] = cls(
-                    PLUGINCFG.get("plugins", {}).get(name, {})
+                    self.plugincfg.get("plugins", {}).get(name, {})
                 )
 
     def heartbeat(self):
@@ -44,10 +43,10 @@ class ChatListener:
         #             print(f"Error checking messages for notifier '{name}': {e}")
 
     def router(self, message: str):
-        router_cfg = AGENTCFG.get("system_agents", {}).get("router", {})
-        custom_agents_cfg = AGENTCFG.get("custom_agents", {})
+        router_cfg = self.agentcfg.get("system_agents", {}).get("router", {})
+        custom_agents_cfg = self.agentcfg.get("custom_agents", {})
         custom_agent_names = next(
-            (g.get("agents", []) for g in AGENTCFG.get("groups", []) if g.get("name") == "custom_agents"),
+            (g.get("agents", []) for g in self.agentcfg.get("groups", []) if g.get("name") == "custom_agents"),
             [],
         )
         agent_lines = "\n".join(
@@ -87,7 +86,7 @@ if __name__ == "__main__":
         response = ChatListener().router(message)
         print(f"Router response: {response}")
         agent_name = response.get("agent")
-        agent_cfg = dict(AGENTCFG.get("custom_agents", {}).get(agent_name, {}))
+        agent_cfg = dict(load_config("config/agents.yaml").get("custom_agents", {}).get(agent_name, {}))
         agent_cfg["agent_name"] = agent_name
         print(f"Sending message to agent '{agent_name}'")
         print(ChatProvider().send_chat_message(message, cfg=agent_cfg, stream=False))
