@@ -1,11 +1,17 @@
-from hermes.notifications.telegram import TelegramNotifier
-from hermes.notifications.gmail import GmailNotifier
-from hermes.notifications.sms import SMSNotifier
+from hermes.plugins.communication.telegram import TelegramNotifier
+from hermes.plugins.communication.gmail import GmailNotifier
+from hermes.plugins.communication.sms import SMSNotifier
 import yaml
 import logging
 
 
 log = logging.getLogger(__name__)
+
+Notifiers_mapping = {
+    "telegram": TelegramNotifier,
+    "gmail": GmailNotifier,
+    "sms": SMSNotifier,
+}
 
 def load_plugins_config(path: str = "config/plugins.yaml") -> dict:
     with open(path, "r") as f:
@@ -14,22 +20,15 @@ def load_plugins_config(path: str = "config/plugins.yaml") -> dict:
 class NotificationHandler:
     def __init__(self):
         self.config = load_plugins_config()
-        active = self.config.get("active") or self.config.get("Active", {})
+        active = self.config.get("active", {}).get("communication")
         if not isinstance(active, dict):
-            raise ValueError("Missing or invalid notification config key: active")
+            raise ValueError("Missing or invalid notification config key: active.communication")
         self.notifiers = {}
-        if active.get("telegram"):
-            self.notifiers["telegram"] = TelegramNotifier(
-                self.config.get("plugins", {}).get("telegram", {})
-            )
-        if active.get("gmail"):
-            self.notifiers["gmail"] = GmailNotifier(
-                self.config.get("plugins", {}).get("gmail", {})
-            )
-        if active.get("sms"):
-            self.notifiers["sms"] = SMSNotifier(
-                self.config.get("plugins", {}).get("sms", {})
-            )
+        for name, settings in active.items():
+            if settings.get("system_notifications") and name in Notifiers_mapping:
+                self.notifiers[name] = Notifiers_mapping[name](
+                    self.config.get("plugins", {}).get(name, {})
+                )
 
 
     def send_notification(self, message: str, severity: str = "Severity.INFO"):

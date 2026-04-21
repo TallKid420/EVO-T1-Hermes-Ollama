@@ -9,6 +9,7 @@ from hermes.watchers.ollama_health import OllamaHealthWatcher
 from hermes.watchers.disk_pressure import DiskPressureWatcher
 from hermes.watchers.memory_pressure import MemoryPressureWatcher
 from hermes.watchers.service_status import ServiceStatusWatcher
+from hermes.chat.chat_listener import ChatListener
 
 
 log = logging.getLogger(__name__)
@@ -26,6 +27,7 @@ def main():
     migrate()
 
     config = load_config()
+    daemon_cfg = config.get("daemon", {})
     services = config["managed_services"]
 
     watchers = [
@@ -33,18 +35,21 @@ def main():
         DiskPressureWatcher(path="/" if __import__("sys").platform != "win32" else "C:\\"),
         MemoryPressureWatcher(),
         ServiceStatusWatcher(services=services),
+
     ]
 
     daemon = HermesDaemon(
         watchers=watchers,
-        tick_seconds=10,
-        dedup_repeat_seconds=300,
+        tick_seconds=daemon_cfg.get("tick_seconds", 10),
+        dedup_repeat_seconds=daemon_cfg.get("dedup_repeat_seconds", 300),
     )
     plugin_manager = PluginManager()
     plugin_manager.load_plugins()
 
     try:
         daemon.run_forever()
+    except KeyboardInterrupt:
+        log.info("Received shutdown signal, exiting...")
     finally:
         log.info("Shutting down plugins")
         plugin_manager.shutdown_all()

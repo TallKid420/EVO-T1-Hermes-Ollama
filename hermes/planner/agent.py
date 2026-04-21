@@ -1,7 +1,7 @@
 import json
 import yaml
 from typing import Dict, Any, Optional, List
-from hermes.provider.chat import ChatProvider
+from hermes.plugins.provider.chat import ChatProvider
 
 
 def load_planner_config(path: str = "config/agents.yaml") -> Dict[str, Any]:
@@ -158,7 +158,7 @@ payload: {json.dumps(payload)}
 """
 
         try:
-            raw_plan = ChatProvider().send_message(
+            raw_plan = ChatProvider().send_system_message(
                 prompt=prompt,
                 cfg=self.cfg,
                 format="json",

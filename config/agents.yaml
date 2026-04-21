@@ -9,15 +9,31 @@ system_agents:
       - restart_service
       - cleanup_cache
       - send_notification
-      - notify_user
       - verify_service
     rules:
       - "If risk_score >= 7, set requires_approval to true"
       - "If the same action has failed more than 2 times in history, escalate instead of retrying"
       - "Always respond in valid JSON only"
       - "Never suggest actions outside the allowed_actions list"
+  router:
+    model: "qwen2.5:0.5b"
+    provider: "ollama"
+    endpoint: "http://localhost:11434"
+    timeout_seconds: 15
+    allowed_actions:
+    rules:
+      - pass
 
 custom_agents:
+  chat_agent:
+    model: "qwen2.5:0.5b"
+    provider: "ollama"
+    endpoint: "http://localhost:11434"
+    system_prompt: |
+      You are a helpful assistant that answers user questions about the system status and recent events. 
+      Always provide concise and accurate information based on the latest data available.
+    timeout_seconds: 20
+    allowed_actions:
   # Example of a custom agent configuration
   # my_custom_agent:
   #   model: "custom-model:latest"
@@ -27,3 +43,15 @@ custom_agents:
   #   allowed_actions:
   #     - custom_action_1
   #     - custom_action_2
+
+groups:
+  - name: system_agents
+    description: "Agents responsible for core system functions like planning and routing."
+    agents:
+      - planner
+      - router
+
+  - name: custom_agents
+    description: "User-defined agents for specific tasks or integrations."
+    agents:
+      - chat_agent

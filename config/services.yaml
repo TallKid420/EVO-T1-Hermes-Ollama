@@ -1,3 +1,7 @@
+daemon:
+  tick_seconds: 10
+  dedup_repeat_seconds: 300
+
 managed_services:
   - name: ollama
     systemd_unit: ollama.service
