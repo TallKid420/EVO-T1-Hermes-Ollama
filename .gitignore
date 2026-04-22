@@ -3,3 +3,4 @@ test.py
 __pycache__/
 hermes.log
 hermes.sqlite3
+.venv

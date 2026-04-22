@@ -17,6 +17,8 @@ plugins:
   telegram:
     token: "8570075240:AAHPpZL0AvvaKHZ2ydIf2xRAhnDiR73fbes"
     chat_id: "8658053670"
+    allowed_user_ids:
+      - 8658053670
 
   gmail:
     email: "your-email@gmail.com"
