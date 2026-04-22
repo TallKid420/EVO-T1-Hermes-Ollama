@@ -1,15 +1,22 @@
 import time
 import logging
 from typing import List
+import yaml
 
 from hermes.watchers.base import BaseWatcher
 from hermes.daemon.state import WatcherState
 from hermes.db import store
 from hermes.db.worker import run_once
+from hermes.chat.message_handler import handle_user_message
 from hermes.notifications.handler import NotificationHandler
 
 
 logger = logging.getLogger(__name__)
+
+
+def _load_yaml_config(path: str):
+    with open(path, "r") as f:
+        return yaml.safe_load(f) or {}
 
 
 def _severity_name(severity) -> str:
@@ -40,6 +47,8 @@ class HermesDaemon:
         self.dedup_repeat_seconds = dedup_repeat_seconds
         self.state = WatcherState()
         self.notification_handler = NotificationHandler()
+        self.plugins_cfg = _load_yaml_config("config/plugins.yaml")
+        self.agents_cfg = _load_yaml_config("config/agents.yaml")
         self._running = False
 
     def _run_watchers(self) -> int:
@@ -47,8 +56,12 @@ class HermesDaemon:
         for watcher in self.watchers:
             try:
                 result = watcher.check()
+                if result.triggered and result.event_type == "user_message":
+                    handle_user_message(result, self.plugins_cfg, self.agents_cfg)
+                    continue
                 if self.state.should_emit(result, self.dedup_repeat_seconds):
                     if result.triggered:
+
                         store.add_event(
                             severity=result.severity,
                             source=result.source,

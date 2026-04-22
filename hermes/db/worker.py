@@ -1,3 +1,13 @@
+from hermes.executor.autonomous_executor import AutonomousExecutor
+from hermes.notifications.handler import NotificationHandler
+from hermes.core.permissions import ApprovalRequired
+from hermes.db.verifier import VerifierAgent
+from hermes.planner.agent import Planner
+from hermes.db.conn import connect
+from hermes.db.models import Task
+from datetime import datetime
+from hermes.db import store
+
 import logging
 log = logging.getLogger(__name__)
 from typing import Dict, Any, Optional, List
@@ -5,16 +15,6 @@ from typing import Dict, Any, Optional, List
 import json
 import time
 import yaml
-
-from hermes.db import store
-from hermes.db.models import Task
-from hermes.executor.autonomous_executor import AutonomousExecutor
-from hermes.core.permissions import ApprovalRequired
-from hermes.planner.agent import Planner
-from hermes.notifications.handler import NotificationHandler
-from hermes.db.verifier import VerifierAgent
-from hermes.db.conn import connect
-from datetime import datetime
 
 
 def load_services_config(path: str = "config/services.yaml") -> Dict[str, Any]:
@@ -180,7 +180,6 @@ def _apply_verification(task: Task, result: Dict[str, Any], verifier: Optional[V
     else:
         store.update_task_status(task.id, "failed", blocked_reason=verification.message)
     return False
-
 
 def run_one_task(
     task: Task,

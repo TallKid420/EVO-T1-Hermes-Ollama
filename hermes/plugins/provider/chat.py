@@ -100,7 +100,7 @@ class OllamaChatProvider(ChatProvider):
     def _ensure_custom_model(self, cfg: Dict[str, Any]) -> str:
         endpoint = str(cfg.get("endpoint") or "").strip()
         configured_model = str(cfg.get("model") or "").strip()
-        model = str(cfg.get("agecnt_name") + ":latest").strip()
+        model = str(cfg.get("agent_name") + ":latest").strip()
         timeout_seconds = int(cfg.get("timeout_seconds") or 30)
         expected_system = str(cfg.get("system_prompt") or cfg.get("system") or "").strip()
         expected_base = configured_model

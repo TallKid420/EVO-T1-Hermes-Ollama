@@ -2,9 +2,10 @@ from hermes.plugins.communication.telegram import TelegramCommunicationPlugin
 # from hermes.plugins.communication.gmail import GmailCommunicationPlugin
 # from hermes.plugins.communication.sms import SMSCommunicationPlugin
 from hermes.plugins.provider.chat import ChatProvider
+from typing import Dict, Any
 import os, json, yaml
 
-def load_config(path: str) -> dict:
+def load_config(path: str) -> Dict[str, Any]:
     with open(path, "r") as f:
         return yaml.safe_load(f) or {}
     
@@ -15,9 +16,9 @@ mapping = {
 }
 
 class ChatListener:
-    def __init__(self):
-        self.plugincfg = load_config("config/plugins.yaml")
-        self.agentcfg = load_config("config/agents.yaml")
+    def __init__(self, plugincfg: Dict[str, Any] | None, agentcfg: Dict[str, Any] | None):
+        self.plugincfg = plugincfg or load_config("config/plugins.yaml")
+        self.agentcfg = agentcfg or load_config("config/agents.yaml")
         active = self.plugincfg.get("active", {}).get("communication")
         if not isinstance(active, dict):
             raise ValueError("Missing or invalid notification config key: active.communication")
@@ -83,7 +84,8 @@ if __name__ == "__main__":
         message = input("Enter a message for the router (or 'exit' to quit): ")
         if message.lower() == "exit":
             break
-        response = ChatListener().router(message)
+        listener = ChatListener(load_config("config/plugins.yaml"), load_config("config/agents.yaml"))
+        response = listener.router(message)
         print(f"Router response: {response}")
         agent_name = response.get("agent")
         agent_cfg = dict(load_config("config/agents.yaml").get("custom_agents", {}).get(agent_name, {}))
