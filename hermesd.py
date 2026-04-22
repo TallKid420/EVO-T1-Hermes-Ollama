@@ -1,3 +1,4 @@
+import signal
 import yaml
 import logging
 import time
@@ -73,6 +74,17 @@ def main():
 
     plugin_manager = PluginManager()
     plugin_manager.load_plugins()
+
+    # SIGHUP → hot-reload config (Linux/macOS). No-op on Windows.
+    def _sighup_handler(signum, frame):
+        log.info("SIGHUP received — reloading config")
+        daemon.reload_config()
+
+    try:
+        signal.signal(signal.SIGHUP, _sighup_handler)
+    except AttributeError:
+        # Windows does not have SIGHUP
+        log.debug("SIGHUP not available on this platform; hot-reload via signal disabled")
 
     try:
         daemon.run_forever()

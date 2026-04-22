@@ -2,7 +2,7 @@ from hermes.executor.autonomous_executor import AutonomousExecutor
 from hermes.notifications.handler import NotificationHandler
 from hermes.core.permissions import ApprovalRequired
 from hermes.db.verifier import VerifierAgent
-from hermes.planner.agent import Planner
+from hermes.agents.planner import Planner
 from hermes.db.conn import connect
 from hermes.db.models import Task
 from datetime import datetime

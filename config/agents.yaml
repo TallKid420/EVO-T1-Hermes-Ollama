@@ -34,15 +34,24 @@ custom_agents:
       Always provide concise and accurate information based on the latest data available.
     timeout_seconds: 20
     allowed_actions:
-  # Example of a custom agent configuration
-  # my_custom_agent:
-  #   model: "custom-model:latest"
-  #   provider: "custom_provider"
-  #   endpoint: "http://custom-endpoint:1234"
-  #   timeout_seconds: 20
-  #   allowed_actions:
-  #     - custom_action_1
-  #     - custom_action_2
+
+  monitor_agent:
+    agent_type: builtin
+    handler: monitor_agent
+    description: >
+      Reports the current system health: disk usage, memory pressure, service status,
+      and Ollama availability. Use for questions like "how is the system?", "any alerts?",
+      "what's the status?", or "is everything healthy?".
+    timeout_seconds: 10
+
+  filesystem_agent:
+    agent_type: builtin
+    handler: filesystem_agent
+    description: >
+      Scans and cleans up safe directories defined in config/filesystem.yaml.
+      Use for requests like "clean up cache", "free up disk space", "run cleanup",
+      or "what can be deleted?".
+    timeout_seconds: 15
 
 groups:
   - name: system_agents
@@ -55,3 +64,5 @@ groups:
     description: "User-defined agents for specific tasks or integrations."
     agents:
       - chat_agent
+      - monitor_agent
+      - filesystem_agent

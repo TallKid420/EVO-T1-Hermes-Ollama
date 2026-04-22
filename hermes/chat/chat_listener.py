@@ -51,7 +51,7 @@ class ChatListener:
             [],
         )
         agent_lines = "\n".join(
-            f"- {name}: {custom_agents_cfg.get(name, {}).get('system_prompt', 'No description available.')!r}"
+            f"- {name}: {custom_agents_cfg.get(name, {}).get('description') or custom_agents_cfg.get(name, {}).get('system_prompt') or 'No description available.'}"
             for name in custom_agent_names
         )
         prompt = f"""You are the Hermes Router Agent. Your only job is to read the user's message and decide which agent should handle it.

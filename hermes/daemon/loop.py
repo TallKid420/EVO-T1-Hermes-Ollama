@@ -51,6 +51,15 @@ class HermesDaemon:
         self.agents_cfg = _load_yaml_config("config/agents.yaml")
         self._running = False
 
+    def reload_config(self) -> None:
+        """Reload plugins.yaml and agents.yaml in place. Thread-safe for read-heavy use."""
+        try:
+            self.plugins_cfg = _load_yaml_config("config/plugins.yaml")
+            self.agents_cfg = _load_yaml_config("config/agents.yaml")
+            logger.info("CONFIG hot-reloaded: plugins.yaml and agents.yaml")
+        except Exception:
+            logger.exception("CONFIG reload failed — keeping previous config")
+
     def _run_watchers(self) -> int:
         emitted = 0
         for watcher in self.watchers:
