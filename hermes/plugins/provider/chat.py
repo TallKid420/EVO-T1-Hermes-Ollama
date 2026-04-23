@@ -200,4 +200,7 @@ class OllamaChatProvider(ChatProvider):
                 json={"model": model, "prompt": prompt, "stream": stream, "format": _format},
                 timeout=timeout_seconds
             )
-            return json.loads(response.json()["response"])
+            raw = response.json().get("response", "")
+            if not raw or not raw.strip():
+                raise ValueError(f"Ollama returned an empty response for model '{model}'")
+            return json.loads(raw)

@@ -1,0 +1,16 @@
+daemon:
+  tick_seconds: 10
+  dedup_repeat_seconds: 300
+
+managed_services:
+  - name: ollama
+    systemd_unit: ollama.service
+    auto_restart: true
+    max_restarts_per_hour: 3
+    cooldown_seconds: 600
+
+  - name: hermes
+    systemd_unit: hermes.service
+    auto_restart: false
+    max_restarts_per_hour: 3
+    cooldown_seconds: 600

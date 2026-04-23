@@ -1,6 +1,7 @@
 from hermes.plugins.communication.telegram import TelegramNotifier
 from hermes.plugins.communication.gmail import GmailNotifier
 from hermes.plugins.communication.sms import SMSNotifier
+from hermes.plugins.communication.whatsapp import WhatsAppNotifier
 import yaml
 import logging
 
@@ -11,6 +12,7 @@ Notifiers_mapping = {
     "telegram": TelegramNotifier,
     "gmail": GmailNotifier,
     "sms": SMSNotifier,
+    "whatsapp": WhatsAppNotifier,
 }
 
 def load_plugins_config(path: str = "config/plugins.yaml") -> dict:

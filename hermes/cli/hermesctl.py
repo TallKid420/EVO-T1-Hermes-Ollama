@@ -343,6 +343,9 @@ def build_parser():
     ev_add.add_argument("--payload", default="{}")
     ev_add.set_defaults(func=cmd_events_add)
 
+    # --- configure ---
+    cfg = sub.add_parser("config", help="Configure Hermes Settings")
+
     # --- actions ---
     ac = sub.add_parser("actions", help="View executor action history")
     ac_sub = ac.add_subparsers(dest="sub", required=True)

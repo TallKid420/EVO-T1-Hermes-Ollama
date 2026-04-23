@@ -1,8 +1,8 @@
 system_agents:
   planner:
-    model: "llama3.2:3b"
-    provider: "ollama"
-    endpoint: "http://localhost:11434"
+    model: "not-set"
+    provider: "not-set"
+    endpoint: "not-set"
     timeout_seconds: 15
     max_history: 5
     allowed_actions:
@@ -16,42 +16,25 @@ system_agents:
       - "Always respond in valid JSON only"
       - "Never suggest actions outside the allowed_actions list"
   router:
-    model: "qwen2.5:0.5b"
-    provider: "ollama"
-    endpoint: "http://localhost:11434"
+    model: "not-set"
+    provider: "not-set"
+    endpoint: "not-set"
     timeout_seconds: 15
     allowed_actions:
     rules:
       - pass
 
 custom_agents:
-  chat_agent:
-    model: "qwen2.5:0.5b"
-    provider: "ollama"
-    endpoint: "http://localhost:11434"
-    system_prompt: |
-      You are a helpful assistant that answers user questions about the system status and recent events. 
-      Always provide concise and accurate information based on the latest data available.
-    timeout_seconds: 20
-    allowed_actions:
-
-  monitor_agent:
-    agent_type: builtin
-    handler: monitor_agent
-    description: >
-      Reports the current system health: disk usage, memory pressure, service status,
-      and Ollama availability. Use for questions like "how is the system?", "any alerts?",
-      "what's the status?", or "is everything healthy?".
-    timeout_seconds: 10
-
-  filesystem_agent:
-    agent_type: builtin
-    handler: filesystem_agent
-    description: >
-      Scans and cleans up safe directories defined in config/filesystem.yaml.
-      Use for requests like "clean up cache", "free up disk space", "run cleanup",
-      or "what can be deleted?".
-    timeout_seconds: 15
+  # agent_name:
+  #   model: "example_model:version"
+  #   provider: "example_provider"
+  #   endpoint: "https://example.com/v1"
+  #   system_prompt: |
+  #     system prompt goes here
+  #   timeout_seconds: 20
+  #   allowed_actions:
+  #    - action_one
+  #    - action_two
 
 groups:
   - name: system_agents
@@ -60,9 +43,8 @@ groups:
       - planner
       - router
 
-  - name: custom_agents
-    description: "User-defined agents for specific tasks or integrations."
-    agents:
-      - chat_agent
-      - monitor_agent
-      - filesystem_agent
+  # - name: custom_agents
+  #   description: "User-defined agents for specific tasks or integrations."
+  #   agents:
+  #     - exampe_agent
+  
