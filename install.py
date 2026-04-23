@@ -6,10 +6,155 @@ import shutil
 import sys
 import urllib.request
 import urllib.error
+import subprocess
+import platform
 from dataclasses import dataclass
 from datetime import datetime
 from pathlib import Path
 from typing import Any
+
+def install_dependencies():
+    """Cross-platform dependency installation for the installer."""
+    print("Installing required dependencies...")
+
+    # Check if we're already in a virtual environment
+    in_venv = hasattr(sys, 'real_prefix') or (hasattr(sys, 'base_prefix') and sys.base_prefix != sys.prefix)
+
+    system = platform.system().lower()
+    machine = platform.machine().lower()
+
+    # Try different installation methods based on platform
+    if system == "windows":
+        return install_windows_deps(in_venv)
+    elif system == "darwin":  # macOS
+        return install_macos_deps(in_venv)
+    elif system == "linux":
+        return install_linux_deps(in_venv)
+    else:
+        print(f"Unsupported platform: {system}")
+        return False
+
+def install_windows_deps(in_venv):
+    """Install dependencies on Windows."""
+    try:
+        # On Windows, try pip install
+        if in_venv:
+            # Already in venv, just install
+            result = subprocess.run([sys.executable, "-m", "pip", "install", "questionary", "ruamel.yaml", "rich", "--quiet"],
+                                  capture_output=True, text=True)
+        else:
+            # Try user install first
+            result = subprocess.run([sys.executable, "-m", "pip", "install", "questionary", "ruamel.yaml", "rich", "--user", "--quiet"],
+                                  capture_output=True, text=True)
+            if result.returncode != 0:
+                # Try system install
+                result = subprocess.run([sys.executable, "-m", "pip", "install", "questionary", "ruamel.yaml", "rich", "--quiet"],
+                                      capture_output=True, text=True)
+
+        if result.returncode == 0:
+            print("Dependencies installed successfully on Windows")
+            return True
+        else:
+            print(f"Failed to install dependencies: {result.stderr}")
+            return False
+    except Exception as e:
+        print(f"Error installing dependencies on Windows: {e}")
+        return False
+
+def install_macos_deps(in_venv):
+    """Install dependencies on macOS."""
+    try:
+        # Try pip install first
+        if in_venv:
+            result = subprocess.run([sys.executable, "-m", "pip", "install", "questionary", "ruamel.yaml", "rich", "--quiet"],
+                                  capture_output=True, text=True)
+        else:
+            result = subprocess.run([sys.executable, "-m", "pip", "install", "questionary", "ruamel.yaml", "rich", "--user", "--quiet"],
+                                  capture_output=True, text=True)
+
+        if result.returncode == 0:
+            print("Dependencies installed successfully on macOS")
+            return True
+
+        # Try with brew if available
+        try:
+            brew_result = subprocess.run(["brew", "install", "python-questionary", "python-ruamel-yaml", "python-rich"],
+                                       capture_output=True, text=True)
+            if brew_result.returncode == 0:
+                print("Dependencies installed successfully via Homebrew")
+                return True
+        except FileNotFoundError:
+            pass
+
+        print(f"Failed to install dependencies on macOS: {result.stderr}")
+        return False
+    except Exception as e:
+        print(f"Error installing dependencies on macOS: {e}")
+        return False
+
+def install_linux_deps(in_venv):
+    """Install dependencies on Linux."""
+    try:
+        # Try pip install first
+        if in_venv:
+            result = subprocess.run([sys.executable, "-m", "pip", "install", "questionary", "ruamel.yaml", "rich", "--quiet"],
+                                  capture_output=True, text=True)
+        else:
+            # Try user install first
+            result = subprocess.run([sys.executable, "-m", "pip", "install", "questionary", "ruamel.yaml", "rich", "--user", "--quiet"],
+                                  capture_output=True, text=True)
+            if result.returncode != 0:
+                # Try break-system-packages for externally managed environments
+                result = subprocess.run([sys.executable, "-m", "pip", "install", "questionary", "ruamel.yaml", "rich", "--break-system-packages", "--quiet"],
+                                      capture_output=True, text=True)
+
+        if result.returncode == 0:
+            print("Dependencies installed successfully on Linux")
+            return True
+
+        # Try system package managers
+        distro = get_linux_distro()
+        if distro in ["ubuntu", "debian"]:
+            apt_result = subprocess.run(["sudo", "apt", "update", "&&", "sudo", "apt", "install", "-y", "python3-questionary", "python3-ruamel.yaml", "python3-rich"],
+                                      shell=True, capture_output=True, text=True)
+            if apt_result.returncode == 0:
+                print("Dependencies installed successfully via apt")
+                return True
+        elif distro in ["fedora", "centos", "rhel"]:
+            dnf_result = subprocess.run(["sudo", "dnf", "install", "-y", "python3-questionary", "python3-ruamel-yaml", "python3-rich"],
+                                      capture_output=True, text=True)
+            if dnf_result.returncode == 0:
+                print("Dependencies installed successfully via dnf")
+                return True
+
+        print(f"Failed to install dependencies on Linux: {result.stderr}")
+        return False
+    except Exception as e:
+        print(f"Error installing dependencies on Linux: {e}")
+        return False
+
+def get_linux_distro():
+    """Detect Linux distribution."""
+    try:
+        with open("/etc/os-release", "r") as f:
+            for line in f:
+                if line.startswith("ID="):
+                    return line.split("=")[1].strip().strip('"').lower()
+    except:
+        pass
+    return "unknown"
+
+# Check if running as installer
+if len(sys.argv) > 1 and sys.argv[1] == "--installer":
+    if not install_dependencies():
+        print("Failed to install dependencies. Please install manually:")
+        print("pip install questionary ruamel.yaml rich")
+        sys.exit(1)
+    print("Running Hermes installer...")
+    # Continue with normal install.py execution
+else:
+    # Normal install.py execution continues below
+    pass
 
 REQUIRED_CONFIG_FILES = [
     "agents.yaml",
