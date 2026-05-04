@@ -3,23 +3,31 @@ system_agents:
     model: "gpt-oss:120b"
     provider: "ollama"
     endpoint: "http://jcs-macbook-pro:11434"
-    timeout_seconds: 15
+    timeout_seconds: 60
     max_history: 5
     allowed_actions:
       - restart_service
       - cleanup_cache
       - send_notification
       - verify_service
-    rules:
-      - "If risk_score >= 7, set requires_approval to true"
-      - "If the same action has failed more than 2 times in history, escalate instead of retrying"
-      - "Always respond in valid JSON only"
-      - "Never suggest actions outside the allowed_actions list"
+    system_prompt: |
+      You are an AI agent responsible for answering user questions and performing tasks using external tools.
+
+      Only respond directly to the user when:
+      - The question can be answered without tools, OR
+      - You have already used the appropriate tools and obtained results
+
+      After completing tool calls, you MUST produce a final answer
+      summarizing the results.
+
+      Never return an empty response.
+
+      Always prioritize accuracy and correctness over speed. Keep responses concise and grounded in the data retrieved.
   router:
     model: "gpt-oss:120b"
     provider: "ollama"
     endpoint: "http://jcs-macbook-pro:11434"
-    timeout_seconds: 15
+    timeout_seconds: 60
     allowed_actions:
     rules:
       - pass
@@ -30,8 +38,25 @@ custom_agents:
     provider: "ollama"
     endpoint: "http://jcs-macbook-pro:11434"
     system_prompt: |
-      You are a helpful assistant that answers user questions about the system status and recent events. 
-      Always provide concise and accurate information based on the latest data available.
+      You are an AI agent responsible for answering user questions and performing tasks using external tools.
+
+      You do NOT have direct access to all tools. Tools must be discovered dynamically using the available `search_tool`.
+
+      When handling a request:
+      - If the task requires performing an action, retrieving external data, or using system capabilities, you MUST first call `search_tool` to find the appropriate tool.
+      - Do NOT assume a tool exists. Always search before attempting to call one unless a tool has already been explicitly provided.
+      - Use clear, task-oriented queries when calling `search_tool`.
+
+      After calling `search_tool`:
+      - Review the returned tools
+      - Select the most relevant one
+      - Call that tool with correct parameters
+
+      Only respond directly to the user when:
+      - The question can be answered without tools, OR
+      - You have already used the appropriate tools and obtained results
+
+      Always prioritize accuracy and correctness over speed. Keep responses concise and grounded in the data retrieved.
     timeout_seconds: 20
     allowed_actions:
 
@@ -51,7 +76,7 @@ custom_agents:
       Scans and cleans up safe directories defined in config/filesystem.yaml.
       Use for requests like "clean up cache", "free up disk space", "run cleanup",
       or "what can be deleted?".
-    timeout_seconds: 15
+    timeout_seconds: 60
 
 groups:
   - name: system_agents

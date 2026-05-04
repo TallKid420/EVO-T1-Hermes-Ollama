@@ -123,6 +123,22 @@ python hermesd.py
 
 Logs go to `hermes.log` and stdout.
 
+### 4a. Run the web API
+
+```bash
+python -m uvicorn hermes.web.api:app --reload --host 0.0.0.0 --port 8000
+```
+
+### 4b. Run the frontend
+
+```bash
+cd webui
+npm install
+npm run dev
+```
+
+Open the browser at `http://localhost:5173` and point the UI at the backend on `http://localhost:8000`.
+
 ### 5. Run as a systemd Service (Recommended)
 
 ```bash

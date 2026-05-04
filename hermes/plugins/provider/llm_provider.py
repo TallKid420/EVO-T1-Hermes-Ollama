@@ -1,6 +1,29 @@
 import json
 import requests
 from typing import Dict, Any
+from hermes.config_loader import AgentConfig
+
+
+def LLMProvider(config: AgentConfig):
+    match config.provider:
+        case "ollama":
+            return Ollama(config)
+        case _:
+            raise ValueError(f"Unsupported provider: {config.provider}")
+
+def Ollama(config: AgentConfig):
+    from langchain_ollama import ChatOllama
+
+    try:
+        llm = ChatOllama(
+            model=config.model,
+            base_url=config.endpoint,
+            temperature=config.temperature,
+        )
+    except Exception as e:
+        raise ValueError(f"Failed to initialize Ollama: {e}")
+
+    return llm
 
 class ChatProvider:
     def __init__(self):
@@ -27,7 +50,7 @@ class ChatProvider:
             )
         raise ValueError(f"Unsupported provider: {provider}")
         
-    def send_chat_message(self, prompt: str, cfg: Dict[str, Any], format: str | None = None, stream: bool = False) -> tuple[str, list[dict], bool]:
+    def send_chat_message(self, prompt: str, cfg: Dict[str, Any], tools: list[dict] | None = None, format: str | None = None, stream: bool = False) -> tuple[str, list[dict], bool]:
         provider = cfg.get("provider")
         if not provider:
             raise ValueError("Missing required chat provider config: provider")
@@ -42,6 +65,7 @@ class ChatProvider:
                 prompt=prompt, 
                 cfg=cfg,
                 stream=stream,
+                tools=tools,
                 _format=format
             )
         raise ValueError(f"Unsupported provider: {provider}")
@@ -160,14 +184,31 @@ class OllamaChatProvider(ChatProvider):
         self._verified_custom_models[cache_key] = (expected_base, expected_system)
         return model
 
-    def ollama_chat(self, prompt: str, cfg: Dict[str, Any], stream: bool, _format: str = None) -> tuple[str, list[dict], bool]:
+    def _validate_tools_payload(self, tools: list[dict] | None) -> None:
+        if tools is None:
+            return
+        if not isinstance(tools, list):
+            raise ValueError("Tools payload must be a list of tool definitions")
+        try:
+            json.dumps(tools)
+        except Exception as exc:
+            raise ValueError(f"Tools payload is not JSON-serializable: {exc}") from exc
+        for tool in tools:
+            if not isinstance(tool, dict):
+                raise ValueError("Each tool definition must be a dictionary")
+            if "name" not in tool and "function" not in tool:
+                raise ValueError("Each tool definition must include 'name' or 'function'")
+
+    def ollama_chat(self, prompt: str, cfg: Dict[str, Any], tools: list[dict] | None, stream: bool, _format: str = None) -> tuple[str, list[dict], bool]:
         endpoint = cfg.get("endpoint")
         timeout_seconds = int(cfg.get("timeout_seconds"))
         model = self._ensure_custom_model(cfg)
+        self._validate_tools_payload(tools)
 
         payload: Dict[str, Any] = {
             "model": model,
             "messages": [{"role": "user", "content": prompt}],
+            "tools": tools,
             "stream": stream,
         }
         if _format is not None:
@@ -178,13 +219,15 @@ class OllamaChatProvider(ChatProvider):
             json=payload,
             timeout=timeout_seconds,
         )
-        response.raise_for_status()
+        # response.raise_for_status()
 
         data = response.json()
-        content = data.get("message", {}).get("content", "")
+        msg = data.get("message", {})
+        tool_calls = msg.get("tool_calls", [])
+        content = msg.get("content", "")
         if _format == "json":
             return json.loads(content)
-        return content
+        return content, tool_calls
 
     def ollama_generate(self, prompt: str, endpoint: str, model: str, timeout_seconds: int, stream: bool, _format: str = None) -> tuple[str, list[dict], bool]:
         if _format is None:

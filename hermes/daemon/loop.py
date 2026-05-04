@@ -1,5 +1,6 @@
 import time
 import logging
+import threading
 from typing import List
 import yaml
 
@@ -8,7 +9,7 @@ from hermes.daemon.state import WatcherState
 from hermes.db import store
 from hermes.db.worker import run_once
 from hermes.chat.message_handler import handle_user_message
-from hermes.notifications.handler import NotificationHandler
+from hermes.plugins.communication.notifications.handler import NotificationHandler
 
 
 logger = logging.getLogger(__name__)
@@ -50,12 +51,16 @@ class HermesDaemon:
         self.plugins_cfg = _load_yaml_config("config/plugins.yaml")
         self.agents_cfg = _load_yaml_config("config/agents.yaml")
         self._running = False
+        self._lock = threading.Lock()  # protects _running and config reloads
 
     def reload_config(self) -> None:
-        """Reload plugins.yaml and agents.yaml in place. Thread-safe for read-heavy use."""
+        """Reload plugins.yaml and agents.yaml in place. Thread-safe."""
         try:
-            self.plugins_cfg = _load_yaml_config("config/plugins.yaml")
-            self.agents_cfg = _load_yaml_config("config/agents.yaml")
+            new_plugins = _load_yaml_config("config/plugins.yaml")
+            new_agents  = _load_yaml_config("config/agents.yaml")
+            with self._lock:
+                self.plugins_cfg = new_plugins
+                self.agents_cfg  = new_agents
             logger.info("CONFIG hot-reloaded: plugins.yaml and agents.yaml")
         except Exception:
             logger.exception("CONFIG reload failed — keeping previous config")
@@ -65,20 +70,28 @@ class HermesDaemon:
         for watcher in self.watchers:
             try:
                 result = watcher.check()
-                if result.triggered and result.event_type == "user_message":
-                    handle_user_message(result, self.plugins_cfg, self.agents_cfg)
-                    continue
-                if self.state.should_emit(result, self.dedup_repeat_seconds):
-                    if result.triggered:
 
-                        store.add_event(
-                            severity=result.severity,
-                            source=result.source,
-                            type_=result.event_type,
-                            message=result.message,
-                            payload=result.payload,
-                        )
-                        emitted += 1
+                # User messages are handled separately — skip normal event flow
+                if result.triggered and result.event_type == "user_message":
+                    with self._lock:
+                        plugins_cfg = self.plugins_cfg
+                        agents_cfg  = self.agents_cfg
+                    handle_user_message(result, plugins_cfg, agents_cfg)
+                    continue
+
+                if self.state.should_emit(result, self.dedup_repeat_seconds):
+                    # Always persist the event to the DB
+                    store.add_event(
+                        severity=result.severity,
+                        source=result.source,
+                        type_=result.event_type,
+                        message=result.message,
+                        payload=result.payload,
+                    )
+                    emitted += 1
+
+                    if result.triggered:
+                        # Active alert — log with severity and notify
                         _log_event_with_severity(
                             source=result.source,
                             message=result.message,
@@ -89,8 +102,9 @@ class HermesDaemon:
                             severity=result.severity,
                         )
                     else:
-                        # State recovered — log as info
+                        # State recovered — log as info only
                         logger.info("OK %s | %s", result.source, result.message)
+
             except Exception:
                 logger.exception("Watcher %s raised an exception", watcher.name)
         return emitted
@@ -106,14 +120,16 @@ class HermesDaemon:
         )
 
     def run_forever(self):
-        self._running = True
+        with self._lock:
+            self._running = True
         logger.info("Hermes daemon started. Tick every %ss", self.tick_seconds)
         while self._running:
             try:
                 self.tick()
             except KeyboardInterrupt:
                 logger.info("Hermes daemon shutting down")
-                self._running = False
+                with self._lock:
+                    self._running = False
                 break
             except Exception:
                 logger.exception("Unhandled exception in tick")

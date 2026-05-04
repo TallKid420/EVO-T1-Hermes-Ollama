@@ -1,7 +1,7 @@
 import json
 import yaml
 from typing import Dict, Any, Optional, List
-from hermes.plugins.provider.chat import ChatProvider
+from hermes.plugins.provider.llm_provider import ChatProvider
 
 
 def load_planner_config(path: str = "config/agents.yaml") -> Dict[str, Any]:

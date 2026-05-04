@@ -25,6 +25,32 @@ system_agents:
       - pass
 
 custom_agents:
+  agents:
+    - name: hermes-chat
+      type: chat
+      provider: ollama
+      endpoint: http://jcs-macbook-pro:11434
+      timeout_seconds: 20
+      temperature: 0
+      model: hermes3
+      system_prompt: "You are Hermes..."
+      enabled: true
+
+    - name: researcher-daily
+      type: researcher
+      provider: ollama
+      model: hermes3
+      tools: [Web Search, file_write]
+      timeout_seconds: 20
+      output_dir: /home/user/reports
+
+    - name: engineer-1
+      type: engineer
+      provider: ollama
+      model: hermes3
+      tools: [code_exec, git_read]
+      timeout_seconds: 20
+      enabled: true
   # agent_name:
   #   model: "example_model:version"
   #   provider: "example_provider"
@@ -36,15 +62,15 @@ custom_agents:
   #    - action_one
   #    - action_two
 
-groups:
-  - name: system_agents
-    description: "Agents responsible for core system functions like planning and routing."
-    agents:
-      - planner
-      - router
+# groups:
+#   - name: system_agents
+#     description: "Agents responsible for core system functions like planning and routing."
+#     agents:
+#       - planner
+#       - router
 
-  # - name: custom_agents
-  #   description: "User-defined agents for specific tasks or integrations."
-  #   agents:
-  #     - exampe_agent
+#   # - name: custom_agents
+#   #   description: "User-defined agents for specific tasks or integrations."
+#   #   agents:
+#   #     - exampe_agent
   

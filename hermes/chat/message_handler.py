@@ -5,7 +5,7 @@ from typing import Any, Dict
 
 from hermes.chat.chat_listener import ChatListener
 from hermes.plugins.communication.telegram import TelegramCommunicationPlugin
-from hermes.plugins.provider.chat import ChatProvider
+from hermes.plugins.provider.llm_provider import ChatProvider
 from hermes.watchers.base import WatcherResult
 
 
