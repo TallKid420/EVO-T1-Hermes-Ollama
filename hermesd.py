@@ -1,12 +1,8 @@
 import os
 import signal
 import sys
-import yaml
 import logging
 import threading
-
-from flask import Flask
-from werkzeug.serving import make_server
 
 from hermes.db.migrations import migrate
 from hermes.daemon.loop import HermesDaemon
@@ -18,6 +14,11 @@ from hermes.watchers.memory_pressure import MemoryPressureWatcher
 from hermes.watchers.service_status import ServiceStatusWatcher
 from hermes.watchers.chat_watcher import ChatWatcher
 from hermes.api.routes import api, init_api
+from config.manager import get_daemon_config, load, SERVICES_YAML, PLUGINS_YAML
+from hermes.runtime.state import write_pid, clear_pid, is_daemon_running
+
+from flask import Flask
+from werkzeug.serving import make_server
 
 log = logging.getLogger(__name__)
 
@@ -28,12 +29,7 @@ _daemon: HermesDaemon = None
 _plugin_manager: PluginManager = None
 _daemon_lock = threading.Lock()
 _stop_event = threading.Event()
-_flask_server = None  # werkzeug server reference for clean shutdown
-
-
-def load_config(path: str) -> dict:
-    with open(path, "r") as f:
-        return yaml.safe_load(f)
+_flask_server = None 
 
 
 def _run_flask(host: str = "0.0.0.0", port: int = 5000):
@@ -45,7 +41,6 @@ def _run_flask(host: str = "0.0.0.0", port: int = 5000):
 
 
 def _shutdown(reason: str = "unknown"):
-    """Single shutdown path — called from signal handler or /shutdown endpoint."""
     log.info("Shutdown triggered: %s", reason)
     with _daemon_lock:
         _daemon._running = False
@@ -57,13 +52,29 @@ def _shutdown(reason: str = "unknown"):
 def main():
     global _daemon, _plugin_manager
 
+    #Guard: refuse start if already running
+    if is_daemon_running():
+        log.error("Hermes daemon is already running. Use 'hermes status' to check. \nGoodbye.")
+        sys.exit(1)
+
     configure_terminal_logging(log_file="hermes.log")
     migrate()
+    write_pid()
 
-    config      = load_config("config/services.yaml")
-    plugins_cfg = load_config("config/plugins.yaml")
-    daemon_cfg  = config.get("daemon", {})
-    services    = config["managed_services"]
+    try: 
+        _run_daemon()
+    finally:
+        clear_pid()
+        log.info("Hermes stopped.")
+
+def _run_daemon():
+    global _daemon, _plugin_manager
+
+    daemon_cfg = get_daemon_config()
+    services_cfg = load(SERVICES_YAML)
+    services = services_cfg.get("managed_services", {})
+    tick = daemon_cfg.get("tick_seconds", 10)
+    dedup = daemon_cfg.get("dedup_repeat_seconds", 300)
 
     watchers = [
         OllamaHealthWatcher(url="http://localhost:11434", timeout=5),
@@ -74,8 +85,8 @@ def main():
 
     _daemon = HermesDaemon(
         watchers=watchers,
-        tick_seconds=daemon_cfg.get("tick_seconds", 10),
-        dedup_repeat_seconds=daemon_cfg.get("dedup_repeat_seconds", 300),
+        tick_seconds=tick,
+        dedup_repeat_seconds=dedup,
     )
 
     _plugin_manager = PluginManager()
@@ -84,20 +95,20 @@ def main():
     init_api(_daemon, _daemon_lock, _stop_event, _shutdown)
 
     # SIGHUP → hot-reload
-    def _sighup_handler(signum, frame):
+    def _sighup(signum, frame):
         log.info("SIGHUP received — reloading config")
         with _daemon_lock:
             _daemon.reload_config()
-
-    try:
-        signal.signal(signal.SIGHUP, _sighup_handler)
-    except AttributeError:
-        log.debug("SIGHUP not available on this platform")
 
     # SIGINT / SIGTERM → clean shutdown
     def _sig_shutdown(signum, frame):
         _shutdown(reason=f"signal {signum}")
 
+    try:
+        signal.signal(signal.SIGHUP, _sighup)
+    except AttributeError as e:
+        log.warning("SIGHUP not supported on this platform, hot-reload disabled")
+        log.error(f"Error occurred: \n{e}")
     signal.signal(signal.SIGINT, _sig_shutdown)
     signal.signal(signal.SIGTERM, _sig_shutdown)
 
@@ -110,37 +121,36 @@ def main():
     daemon_thread.start()
     log.info("Daemon thread started")
 
-    # Flask thread
+    # Flask thread (optional)
     api_cfg = daemon_cfg.get("api", {})
-    flask_thread = threading.Thread(
-        target=_run_flask,
-        kwargs={
-            "host": api_cfg.get("host", "0.0.0.0"),
-            "port": api_cfg.get("port", 5000),
-        },
-        name="hermes-api",
-        daemon=True,
-    )
-    flask_thread.start()
-    log.info("REST API thread started")
-
-    terminal_enabled = os.environ.get("HERMES_TERMINAL", "1") != "0"
-    if terminal_enabled and sys.stdin.isatty():
-        try:
-            from main import main as run_rich_terminal
-            run_rich_terminal()
-        finally:
-            _shutdown(reason="terminal exited")
+    if api_cfg.get("enabled", True):
+        flask_thread = threading.Thread(
+            target=_run_flask,
+            kwargs={
+                #To expose it to the network use 0.0.0.0
+                #To set as only local use 127.0.0.1
+                "host": api_cfg.get("host", "0.0.0.0"),
+                "port": api_cfg.get("port", 5000),
+            },
+            name="hermes-api",
+            daemon=True,
+        )
+        flask_thread.start()
+        log.info("REST API thread started")
     else:
-        _stop_event.wait()
+        flask_thread = None
+        log.info("REST API disabled by configuration")
+
+    #Block until stop event
+    _stop_event.wait()
 
     log.info("Waiting for threads to finish...")
     daemon_thread.join(timeout=15)
-    flask_thread.join(timeout=5)
+    if flask_thread:
+        flask_thread.join(timeout=5)
 
     log.info("Shutting down plugins")
     _plugin_manager.shutdown_all()
-    log.info("Hermes stopped.")
 
 
 if __name__ == "__main__":

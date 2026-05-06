@@ -5,9 +5,9 @@ active:
       output: false
       system_notifications: false
     telegram:
-      input: false
-      output: false
-      system_notifications: false
+      input: true
+      output: true
+      system_notifications: true
     gmail:
       input: false
       output: false
@@ -23,6 +23,8 @@ plugins:
     chat_id: "your-telegram-chat-id"
     allowed_user_ids:
       - 123456789
+    approvals:
+      enabled: true
 
   gmail:
     email: "your-email@gmail.com"

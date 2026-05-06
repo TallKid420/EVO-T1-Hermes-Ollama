@@ -1,5 +1,16 @@
 from hermes.db import store
 
+# Ops-safe policy: these types always require approval
+_APPROVAL_REQUIRED_TYPES = {
+    "delete_files",
+    "reboot_server",
+    "restart_service",
+    "run_command",
+    "modify_config",
+}
+
+# Risk score threshold above which approval is required
+_APPROVAL_RISK_THRESHOLD = 5
 
 def list_tasks(limit: int = 50, status: str = None) -> list:
     tasks = store.list_tasks(limit=limit, status=status)
@@ -19,15 +30,53 @@ def approve_task(task_id: int) -> dict:
     return {"status": "approved", "task_id": task_id}
 
 
-def queue_task(type_: str, payload: dict = None, priority: int = 5) -> dict:
+def queue_task(
+    type_: str,
+    payload: dict = None,
+    priority: int = 5,
+    risk_score: int = 0,
+    requires_approval: bool = False,
+) -> dict:
+    needs_approval = (
+        requires_approval
+        or risk_score > _APPROVAL_RISK_THRESHOLD
+        or type_ in _APPROVAL_REQUIRED_TYPES
+    )
+
+    status = "blocked" if needs_approval else "queued"
+
     task_id = store.create_task(
-        status="queued",
+        status=status,
         type_=type_,
         title=f"Manual: {type_}",
         payload=payload or {},
         priority=priority,
+        requires_approval=needs_approval,
     )
-    return {"status": "queued", "task_id": task_id}
+
+    if needs_approval:
+        _notify_approval_required(task_id, type_, payload or {}, risk_score)
+
+    return {"status": status, "task_id": task_id, "requires_approval": needs_approval}
+
+
+def _notify_approval_required(task_id: int, type_: str, payload: dict, risk_score: int):
+    """Fire approval notification via Telegram if configured."""
+    import yaml
+    try:
+        with open("config/plugins.yaml", "r") as f:
+            plugins_cfg = yaml.safe_load(f) or {}
+
+        tg_cfg = plugins_cfg.get("plugins", {}).get("telegram", {})
+        if not tg_cfg.get("token") or not tg_cfg.get("chat_id"):
+            return
+
+        from hermes.plugins.communication.telegram import TelegramCommunicationPlugin
+        tg = TelegramCommunicationPlugin(config=tg_cfg)
+        tg.send_approval_request(task_id, type_, payload, risk_score)
+    except Exception:
+        import logging
+        logging.getLogger(__name__).exception("Failed to send approval notification")
 
 
 def list_pending(limit: int = 50) -> list:

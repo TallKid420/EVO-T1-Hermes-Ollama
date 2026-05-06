@@ -1,6 +1,13 @@
 daemon:
   tick_seconds: 10
   dedup_repeat_seconds: 300
+  autostart: false
+  pid_file: /tmp/hermesd.pid
+
+api:
+  enabled: true
+  host: 0.0.0.0
+  port: 5000
 
 managed_services:
   # have config add this if used.

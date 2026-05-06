@@ -40,6 +40,21 @@ class TelegramCommunicationPlugin:
         except Exception as e:
             log.exception("Telegram send failed: %s", e)
 
+    def send_approval_request(
+        self,
+        task_id: int,
+        action_type: str,
+        payload: dict,
+        risk_score: int = 0,
+    ):
+        """TODO: Implement Telegram approval request sending."""
+        log.warning(
+            "send_approval_request not yet implemented "
+            "(task_id=%s, action_type=%s, risk_score=%s)",
+            task_id, action_type, risk_score,
+        )
+        print(f"[Telegram] NOT IMPLEMENTED: Approval request for task {task_id} ({action_type})")
+
 class TelegramNotifier:
     SEVERITY_EMOJI = {
         "Severity.CRITICAL": "🚨",
