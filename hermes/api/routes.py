@@ -1,3 +1,8 @@
+"""
+/hermes/api/routes.py
+Flask routes for Hermes REST API.
+"""
+
 import threading
 from flask import Blueprint, jsonify, request
 
@@ -49,12 +54,18 @@ def logs():
 
 # ── Tasks ──────────────────────────────────────────────────────────────────────
 
-@api.route("/tasks", methods=["GET"])
-def tasks_list():
-    return jsonify(task_service.list_tasks(
-        limit=int(request.args.get("limit", 50)),
-        status=request.args.get("status", None),
-    ))
+@api.route("/tasks/<int:task_id>", methods=["GET"])
+def tasks_list(task_id):
+    if task_id:
+        t = task_service.get_task(task_id)
+        if not t:
+            return jsonify({"error": "not found"}), 404
+        return jsonify(t)
+    else:
+        return jsonify(task_service.list_tasks(
+            limit=int(request.args.get("limit", 50)),
+            status=request.args.get("status", None),
+        ))
 
 
 @api.route("/tasks/pending", methods=["GET"])
@@ -83,6 +94,11 @@ def tasks_show(task_id):
 def tasks_approve(task_id):
     return jsonify(task_service.approve_task(task_id))
 
+@api.route("/tasks/<int:task_id>/deny", methods=["POST"])
+def tasks_deny(task_id):
+    body = request.get_json(force=True)
+    reason = body.get("reason")
+    return jsonify(task_service.deny_task(task_id, reason=reason))
 
 @api.route("/tasks/queue", methods=["POST"])
 def tasks_queue():

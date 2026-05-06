@@ -1,4 +1,10 @@
+"""
+hermes/services/task_service.py
+Core logic for managing tasks: queuing, approval, status updates, and retrieval.
+"""
+
 from hermes.db import store
+from typing import Optional
 
 # Ops-safe policy: these types always require approval
 _APPROVAL_REQUIRED_TYPES = {
@@ -26,9 +32,20 @@ def get_task(task_id: int) -> dict | None:
 
 def approve_task(task_id: int) -> dict:
     from hermes.db.store import approve_task as _approve
-    _approve(task_id)
-    return {"status": "approved", "task_id": task_id}
+    try:
+        _approve(task_id)
+        return {"ok": True, "task_id": task_id}
+    except Exception as e:
+        return {"ok": False, "task_id": task_id, "error": str(e)}
 
+
+def deny_task(task_id: int, reason: Optional[str] = None) -> dict:
+    from hermes.db.store import deny_task as _deny
+    try:
+        _deny(task_id, reason=reason)
+        return {"ok": True, "task_id": task_id, "reason": reason}
+    except Exception as e:
+        return {"ok": False, "task_id": task_id, "error": str(e)}
 
 def queue_task(
     type_: str,

@@ -1,3 +1,10 @@
+"""
+hermes/db/store.py
+Database access layer for Hermes. 
+Provides functions to create, read, update, and delete tasks, events, and actions. 
+Uses SQLite for storage and handles JSON serialization of payloads and results.
+"""
+
 import json
 from datetime import datetime
 from typing import Optional, Dict, Any, List
@@ -6,7 +13,14 @@ from hermes.db.conn import connect
 from hermes.db.models import Event, Task, Action
 
 
-VALID_TASK_STATUSES = {"queued", "running", "done", "failed", "blocked"}
+VALID_TASK_STATUSES = {
+    "queued", 
+    "running", 
+    "done", 
+    "failed", 
+    "blocked", 
+    "denied"
+}
 
 
 def _now() -> str:
@@ -233,21 +247,35 @@ def set_task_result(task_id: int, result: Dict[str, Any]):
     finally:
         conn.close()
 
-
-def approve_task(task_id: int):
+def _update_task(query, params):
     conn = connect()
     try:
-        conn.execute(
-            """
-            UPDATE tasks
-            SET status = 'queued', approved_at = ?, blocked_reason = NULL
-            WHERE id = ? AND status = 'blocked'
-            """,
-            (_now(), task_id),
-        )
-        conn.commit()
+        with conn:
+            cur = conn.execute(query, params)
+            if cur.rowcount == 0:
+                raise ValueError("Invalid task state or ID")
     finally:
         conn.close()
+
+def approve_task(task_id: int):
+    _update_task(
+        """
+        UPDATE tasks
+        SET status = 'queued', approved_at = ?, blocked_reason = NULL
+        WHERE id = ? AND status = 'blocked'
+        """,
+        (_now(), task_id),
+    )
+
+def deny_task(task_id: int, reason: Optional[str] = None):
+    _update_task(
+        """
+        UPDATE tasks
+        SET status = 'denied', blocked_reason = ?
+        WHERE id = ? AND status = 'blocked'
+        """,
+        (reason, task_id),
+    )
 
 
 def claim_next_queued_task() -> Optional[Task]:
