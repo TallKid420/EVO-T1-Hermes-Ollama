@@ -9,9 +9,14 @@ PLUGINS_YAML = os.path.join(CONFIG_DIR, "plugins.yaml")
 def configs_exist() -> bool:
     return all(os.path.exists(p) for p in [SERVICES_YAML, AGENTS_YAML, PLUGINS_YAML])
 
+print(configs_exist())
+
 def load(path: str) -> dict:
-    if not os.path.exists(path):
-        return {}
+    if os.path.exists(path):
+        pass
+    elif os.path.exists(os.path.join(CONFIG_DIR, path)):
+        path = os.path.join(CONFIG_DIR, path)
+    else: return {}
     with open(path, "r") as f:
         return yaml.safe_load(f) or {}
 

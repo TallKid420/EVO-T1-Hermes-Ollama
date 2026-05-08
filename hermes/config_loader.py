@@ -5,7 +5,6 @@ from __future__ import annotations
 from config.manager import load
 from dataclasses import dataclass, field
 from typing import Any, Dict, Optional
-import yaml
 
 
 @dataclass
@@ -51,26 +50,35 @@ def _agent_from_dict(entry: Dict[str, Any]) -> AgentConfig:
     )
 
 
-def load_agents(path: str) -> list[AgentConfig]:
+def load_agents(path: str, raw) -> list[AgentConfig]:
     """Load custom agents from config/agents.yaml."""
-    raw = load_config(path)
-    agents = []
-    for entry in raw.get("custom_agents", {}).get("agents", []):
-        if not entry.get("enabled", True):
-            continue
-        agents.append(_agent_from_dict(entry))
-    return agents
+    raw = load(path)
+    return [
+        _agent_from_dict(entry)
+        for entry in raw.get("custom_agents", {}).get("agents", [])
+        if entry.get("enabled", True)
+    ]
+    # agents = []
+    # for entry in raw.get("custom_agents", {}).get("agents", []):
+    #     if not entry.get("enabled", True):
+    #         continue
+    #     agents.append(_agent_from_dict(entry))
+    # return agents
 
 
 def load_system_agents(path: str) -> list[AgentConfig]:
-    """Load system agents from config/system_agents.yaml."""
     raw = load(path)
-    agents = []
-    for entry in raw.get("system_agents", {}).get("agents", []):
-        if not entry.get("enabled", True):
-            continue
-        agents.append(_agent_from_dict(entry))
-    return agents
+    return [
+        _agent_from_dict(entry)
+        for entry in raw.get("system_agents", {}).get("agents", [])
+        if entry.get("enabled", True)
+    ]
+    # agents = []
+    # for entry in raw.get("system_agents", {}).get("agents", []):
+    #     if not entry.get("enabled", True):
+    #         continue
+    #     agents.append(_agent_from_dict(entry))
+    # return agents
 
 # # Quick test of loading agents
 # agents = load_system_agents("config/agents.yaml")

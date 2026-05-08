@@ -2,6 +2,7 @@ import logging
 import sys
 import traceback
 from typing import Dict, List
+import httpx
 
 from hermes.chat.orchestrator import Orchestrator
 from hermes.agents.base_agent import BaseAgent
@@ -15,6 +16,12 @@ from rich.text import Text
 class HermesTerminal:
     def __init__(self, agent: BaseAgent):
         self.agent = agent
+        print("Initialising Hermes orchestrator…")
+        try:
+            self.orchestrator = Orchestrator(self.agent)
+        except Exception as exc:
+            logging.error("Failed to initialise orchestrator: %s", exc)
+            sys.exit(1)
         self.transcript: List[Dict[str, str]] = []
         self.console = Console()
         logging.basicConfig(
@@ -45,19 +52,13 @@ class HermesTerminal:
     # ── Init ──────────────────────────────────────────────────────────────────
     def _init(self):
         self.log.info("Starting Terminal")
-        print("Initialising Hermes orchestrator…")
-        try:
-            self.orchestrator = Orchestrator(self.agent)
-        except Exception as exc:
-            logging.error("Failed to initialise orchestrator: %s", exc)
-            sys.exit(1)
         self.console.clear()
         self._render_header("CHAT")
 
     # ── Main loop ─────────────────────────────────────────────────────────────
     def run(self):
-        print("Run")
         self._init()
+        result = None
 
         while True:
             try:
@@ -68,10 +69,25 @@ class HermesTerminal:
             if not msg:
                 continue
 
+            if msg.lower() == "/exit":
+                self.console.print(
+                    "[green]Exiting Hermes Terminal. Goodbye![/green]"
+                )
+                break
+
             self._add_transcript("user", msg)
 
             try:
                 result = self.orchestrator.run(msg)
+                if result.get("error"):
+                    self.console.print(
+                        Panel(
+                            f"[red]Connection Error:[/red] {result['message']}",
+                            border_style="red",
+                        )
+                    )
+                    continue
+
                 outcome = result["messages"][-1]
                 assistant_parts = outcome.content
                 if assistant_parts:
@@ -86,6 +102,17 @@ class HermesTerminal:
                 self.console.print("\n[green]Exiting Hermes Terminal. Goodbye![/green]")
                 sys.exit(0)
 
+            except httpx.ConnectError as exc:
+                self._add_transcript("error", str(exc))
+                self.console.print(
+                    Panel(
+                        f"[red]Operator error:[/red] {exc}\n"
+                        "[dim]Full trace written to errors.log[/dim]",
+                        border_style="red",
+                    )
+                )
+                self._log_error()
+
             except Exception as exc:
                 self._add_transcript("error", str(exc))
                 self.console.print(
@@ -95,10 +122,10 @@ class HermesTerminal:
                         border_style="red",
                     )
                 )
-                if result != None:
+                if result is not None:
                     self.console.print(
                         Panel(
-                            "[green]Result:[/green]\n" + result,
+                            "[green]Result:[/green]\n" + str(result),
                             border_style="yellow",
                         )
                     )

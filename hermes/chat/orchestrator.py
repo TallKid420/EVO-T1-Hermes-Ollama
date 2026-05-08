@@ -7,8 +7,7 @@ terminal.py calls orchestrator.run(user_message) and prints the result.
 
 from __future__ import annotations
 
-import logging
-import yaml
+import logging, httpx
 from typing import Any, Dict
 
 from hermes.agents.base_agent import BaseAgent
@@ -18,74 +17,51 @@ from hermes.executor.search_tools import SearchTools
 log = logging.getLogger(__name__)
 
 
-def _load_yaml(path: str) -> Dict[str, Any]:
-    try:
-        with open(path, "r") as f:
-            return yaml.safe_load(f) or {}
-    except FileNotFoundError:
-        log.warning("Config file not found: %s", path)
-        return {}
-
-
 class Orchestrator:
     """
     Top-level agent that terminal.py talks to.
-
-    Parameters
-    ----------
-    agents_cfg_path : str
-        Path to agents.yaml. Used to resolve the orchestrator's own cfg
-        and to pass agent definitions to ToolHandler for sub-agent spawning.
-    plugins_cfg_path : str
-        Path to plugins.yaml.
+    Wraps a spawned BaseAgent and exposes a simple run(user_message) interface.
     """
 
     def __init__(self, agent: BaseAgent):
-        print(f"Base agent: {agent}")
-        system_prompt = agent.pop("system_prompt")
-        log.info(f"Orchestrator system prompt:\n{system_prompt}")
-
-        from langgraph.checkpoint.memory import InMemorySaver
-        self.checkpointer = InMemorySaver()
-
-        from langchain_ollama import ChatOllama
-
-        self.llm = ChatOllama(
-            model=agentcfg.model,
-            base_url=agentcfg.endpoint,
-            temperature=agentcfg.tempature,
-        )
-
-        from langchain.agents import create_agent
-
-        self.agent = create_agent(
-            model=self.llm,
-            system_prompt=system_prompt,
-            tools=SearchTools()._build_executor_tool_list(),
-            checkpointer=self.checkpointer,
-        )
+        self.base_agent = agent
+        self.agent = agent.get_runtime()
 
         self.callbacks = [ToolLogger()]
 
     def run(self, user_message: str):
-        config = {
+        config: Dict[str, Any] = {
             "configurable": {"thread_id": "orchestrator-default"},
             "callbacks": self.callbacks,
         }
 
         payload = {"messages": [{"role": "user", "content": user_message}]}
+
         try:
-            result = self.agent.invoke(payload, config=config)
-            return result
+            return self.agent.invoke(payload, config=config)
+        except httpx.ConnectError as exc:
+            log.error("Connection Error: Failed to connect to server")
+            return {
+                "error": True,
+                "type": "connection_error",
+                "message": str(exc),
+            }
         except Exception as exc:
             err = str(exc)
             if "error parsing tool call" not in err:
-                raise
-            retry_prompt = (
-                "Retry the previous request. "
-                "If you call a tool, output exactly one tool call and provide only strict JSON arguments with no prose.\n\n"
-                f"Original user request: {user_message}"
-            )
-            retry_payload = {"messages": [{"role": "user", "content": retry_prompt}]}
-            result = self.agent.invoke(retry_payload, config=config)
-            return result
+                log.exception(f"Error Caught: \n{err}")
+            log.warning("Tool call parse error — retrying with strict prompt")
+            retry_payload = {
+                "messages": [
+                    {
+                        "role": "user",
+                        "content": (
+                            "Retry the previous request. "
+                            "If you call a tool, output exactly one tool call "
+                            "and provide only strict JSON arguments with no prose.\n\n"
+                            f"Original user request: {user_message}"
+                        ),
+                    }
+                ]
+            }
+            return self.agent.invoke(retry_payload, config=config)

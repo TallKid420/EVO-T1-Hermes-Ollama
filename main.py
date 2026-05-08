@@ -542,7 +542,18 @@ def pick_custom_agent() -> str | None:
 
 def chat_loop(agent_name: str):
     from hermes.chat.terminal import HermesTerminal
-    HermesTerminal(AgentSpawner().get_server_agents()).run()
+    match agent_name:
+        case "Server Agent":
+            spawner = AgentSpawner()
+            server_agent = spawner.get_agent_by_name("server")
+
+            if not server_agent:
+                print("Server Agent not Found.")
+                return
+            
+            HermesTerminal(server_agent).run()
+        case _:
+            raise ValueError(f"Invalid Agent Name Type: {agent_name}")
     # console.print(
     #     Panel(
     #         f"[bold green]Chat — {agent_name}[/bold green]\n[dim]/back to return[/dim]",

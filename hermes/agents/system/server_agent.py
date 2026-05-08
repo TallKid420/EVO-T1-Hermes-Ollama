@@ -253,24 +253,14 @@ Rules:
 # ── ServerAgent class ──────────────────────────────────────────────────────────
 
 class ServerAgent(BaseAgent):
-    """
-    LLM-powered Server Agent.
+    
+    TOOLS = SERVER_AGENT_TOOLS
 
-    Built on LangChain tool-calling loop:
-      1. User message → LLM with bound tools
-      2. LLM calls tools → results fed back
-      3. LLM produces final answer
-
-    Spawned via AgentFactory using type="server".
-    """
+    SYSTEM_PROMPT = _SYSTEM_PROMPT
 
     def __init__(self, config: AgentConfig):
         super().__init__(config)
-        self._llm_raw  = LLMProvider(config)
-        self._llm      = self._llm_raw.bind_tools(SERVER_AGENT_TOOLS)
         self._monitor  = MonitorAgent.from_config()
-        self._history: List[Any] = []   # rolling conversation history
-        logger.info("ServerAgent initialised with model=%s", config.model)
 
     # ── BaseAgent interface ────────────────────────────────────────────────────
 
@@ -286,29 +276,6 @@ class ServerAgent(BaseAgent):
         while self.running:
             self.monitor_tick()
             time.sleep(60)
-
-    # ── Chat interface ─────────────────────────────────────────────────────────
-
-    def chat(self, message: str) -> str:
-        """
-        Handle a direct message from the operator.
-        Runs the full LangChain tool-calling loop and returns the final response.
-        """
-        messages = [SystemMessage(content=_SYSTEM_PROMPT)] + self._history + [HumanMessage(content=message)]
-
-        try:
-            response = self._run_tool_loop(messages)
-        except Exception as e:
-            logger.exception("ServerAgent.chat error")
-            return f"[Server Agent error: {e}]"
-
-        # Append to rolling history (keep last 10 turns)
-        self._history.append(HumanMessage(content=message))
-        self._history.append(AIMessage(content=response))
-        if len(self._history) > 20:
-            self._history = self._history[-20:]
-
-        return response
 
     # ── Monitor tick ───────────────────────────────────────────────────────────
 
@@ -362,48 +329,3 @@ class ServerAgent(BaseAgent):
             logger.exception("ServerAgent.monitor_tick error")
 
         return queued
-
-    # ── Tool-calling loop ──────────────────────────────────────────────────────
-
-    def _run_tool_loop(self, messages: List[Any], max_iterations: int = 6) -> str:
-        """
-        LangChain tool-calling loop:
-          - Send messages to LLM
-          - If LLM calls tools, execute them and feed results back
-          - Repeat until LLM produces a final text response (no tool calls)
-          - Hard cap at max_iterations to prevent runaway loops
-        """
-        for iteration in range(max_iterations):
-            ai_msg = self._llm.invoke(messages)
-            messages.append(ai_msg)
-
-            # No tool calls → LLM is done, return the text
-            if not getattr(ai_msg, "tool_calls", None):
-                return ai_msg.content or "(no response)"
-
-            # Execute each tool call
-            for tc in ai_msg.tool_calls:
-                tool_name = tc["name"]
-                tool_args = tc.get("args", {})
-                tool_id   = tc.get("id", tool_name)
-
-                logger.debug("ServerAgent tool call: %s(%s)", tool_name, tool_args)
-
-                tool_fn = _TOOL_MAP.get(tool_name)
-                if tool_fn is None:
-                    result = f"[error: unknown tool '{tool_name}']"
-                else:
-                    try:
-                        result = tool_fn.invoke(tool_args)
-                    except Exception as e:
-                        result = f"[tool error: {e}]"
-
-                messages.append(
-                    ToolMessage(content=str(result), tool_call_id=tool_id)
-                )
-
-        # Hit iteration cap — return whatever the last AI message said
-        last = messages[-1]
-        if hasattr(last, "content") and last.content:
-            return last.content
-        return "[Server Agent hit max tool iterations — check logs]"

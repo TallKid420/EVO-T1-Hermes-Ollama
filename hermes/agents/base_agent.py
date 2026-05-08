@@ -8,6 +8,12 @@ class BaseAgent(ABC):
         self.langchain_agent = LLMProvider(self.config)     # holds the actual LangSmith agent instance
         self.running = False        # used later for run_loop()
 
+    def get_runtime(self):
+        if self._runtime is None:
+            self._runtime = self._build_runtime()
+
+        return self._runtime
+
     @abstractmethod
     def run(self, input=None):
         pass                        # every agent MUST implement this
