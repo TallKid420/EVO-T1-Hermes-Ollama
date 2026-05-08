@@ -9,6 +9,7 @@ This also prevents circular imports.
 from hermes.agents.types.chat_agent import ChatAgent
 from hermes.agents.types.research_agent import ResearcherAgent
 from hermes.agents.types.engineer_agent import EngineerAgent
+from hermes.agents.system.server_agent import ServerAgent
 # from agents.types.monitor_agent import MonitorAgent
 # from agents.types.scheduler_agent import SchedulerAgent
 
@@ -16,6 +17,7 @@ AGENT_REGISTRY = {
     "chat":       ChatAgent,
     "researcher": ResearcherAgent,
     "engineer":   EngineerAgent,
+    "server":     ServerAgent,
     # "monitor":    MonitorAgent,
     # "scheduler":  SchedulerAgent,
 }

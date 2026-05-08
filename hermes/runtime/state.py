@@ -43,6 +43,10 @@ def is_daemon_running() -> bool:
     except PermissionError:
         # Process exists but owned by another user
         return True
+    except OSError:
+        # Handles Windows-specific invalid process states
+        clear_pid()
+        return False
 
 
 def get_daemon_pid() -> int | None:

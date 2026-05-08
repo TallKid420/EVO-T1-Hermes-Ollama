@@ -1,10 +1,11 @@
 system_agents:
-  server:
+  agents:
+    - name: server
       enabled: true
-      preset: server
-      model: "not-set"
-      provider: "not-set"
-      endpoint: "not-set"
+      type: server
+      model: "gpt-oss:120b"
+      provider: "ollama"
+      endpoint: "http://jcs-macbook-pro:11434"
       timeout_seconds: 20
       command_policy: ops_safe
       allowed_commands:

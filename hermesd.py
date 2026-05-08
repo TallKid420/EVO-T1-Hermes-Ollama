@@ -8,11 +8,14 @@ from hermes.db.migrations import migrate
 from hermes.daemon.loop import HermesDaemon
 from hermes.plugins.loader import PluginManager
 from hermes.utils.terminal_handler import configure_terminal_logging
+from hermes.config_loader import load_system_agents
+from hermes.agents.factory import AgentFactory
+from hermes.agents.system.server_agent import ServerAgent
+from hermes.agents.base_agent import BaseAgent
 from hermes.watchers.ollama_health import OllamaHealthWatcher
 from hermes.watchers.disk_pressure import DiskPressureWatcher
 from hermes.watchers.memory_pressure import MemoryPressureWatcher
 from hermes.watchers.service_status import ServiceStatusWatcher
-from hermes.watchers.chat_watcher import ChatWatcher
 from hermes.api.routes import api, init_api
 from config.manager import get_daemon_config, load, SERVICES_YAML, PLUGINS_YAML
 from hermes.runtime.state import write_pid, clear_pid, is_daemon_running
@@ -22,6 +25,8 @@ from werkzeug.serving import make_server
 
 log = logging.getLogger(__name__)
 
+server_agents_cfg = load_system_agents("config/agents.yaml")
+
 app = Flask(__name__)
 app.register_blueprint(api)
 
@@ -29,7 +34,11 @@ _daemon: HermesDaemon = None
 _plugin_manager: PluginManager = None
 _daemon_lock = threading.Lock()
 _stop_event = threading.Event()
+_server_agents = []
 _flask_server = None 
+
+for agent in server_agents_cfg:
+    _server_agents.append(AgentFactory.spawn(agent))
 
 
 def _run_flask(host: str = "0.0.0.0", port: int = 5000):

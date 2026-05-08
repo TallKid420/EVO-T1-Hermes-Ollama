@@ -4,7 +4,6 @@ import traceback
 from typing import Dict, List
 
 from hermes.chat.orchestrator import Orchestrator
-from hermes.agents.base_agent import BaseAgent
 from rich.align import Align
 from rich.console import Console
 from rich.logging import RichHandler
@@ -13,9 +12,9 @@ from rich.text import Text
 
 
 class HermesTerminal:
-    def __init__(self, agent: BaseAgent):
-        self.agent = agent
+    def __init__(self):
         self.transcript: List[Dict[str, str]] = []
+
         self.console = Console()
         logging.basicConfig(
             level="NOTSET", format="%(message)s", datefmt="[%X]", handlers=[RichHandler()]
@@ -47,7 +46,10 @@ class HermesTerminal:
         self.log.info("Starting Terminal")
         print("Initialising Hermes orchestrator…")
         try:
-            self.orchestrator = Orchestrator(self.agent)
+            self.orchestrator = Orchestrator(
+                agents_cfg_path="config_test_values/agents.yaml",
+                plugins_cfg_path="config_test_values/plugins.yaml",
+            )
         except Exception as exc:
             logging.error("Failed to initialise orchestrator: %s", exc)
             sys.exit(1)

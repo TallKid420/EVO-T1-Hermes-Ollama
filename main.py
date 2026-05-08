@@ -22,6 +22,7 @@ from rich.prompt import Prompt, Confirm
 from rich.table import Table
 from rich import box
 from hermes.runtime.state import is_daemon_running, get_daemon_pid
+from hermes.runtime.spawner import AgentSpawner
 
 console = Console()
 
@@ -540,30 +541,41 @@ def pick_custom_agent() -> str | None:
 
 
 def chat_loop(agent_name: str):
-    console.print(
-        Panel(
-            f"[bold green]Chat — {agent_name}[/bold green]\n[dim]/back to return[/dim]",
-            box=box.SIMPLE,
-        )
-    )
+    from hermes.chat.terminal import HermesTerminal
+    HermesTerminal(AgentSpawner().get_server_agents()).run()
+    # console.print(
+    #     Panel(
+    #         f"[bold green]Chat — {agent_name}[/bold green]\n[dim]/back to return[/dim]",
+    #         box=box.SIMPLE,
+    #     )
+    # )
 
-    if not is_daemon_running():
-        console.print("[yellow]Daemon is not running. Start it first.[/yellow]")
-        return
+    # if not is_daemon_running():
+    #     console.print("[yellow]Daemon is not running. Start it first.[/yellow]")
+    #     return
 
-    while True:
-        try:
-            raw = Prompt.ask("[bold cyan]>[/bold cyan]", default="").strip()
-        except (KeyboardInterrupt, EOFError):
-            console.print()
-            return
+    # while True:
+    #     try:
+    #         raw = Prompt.ask("[bold cyan]>[/bold cyan]", default="").strip()
+    #     except (KeyboardInterrupt, EOFError):
+    #         console.print()
+    #         return
 
-        if raw == "":
-            continue
-        if raw.lower() in {"/back", "/exit", "/quit", "q"}:
-            return
+    #     if raw == "":
+    #         continue
+    #     if raw.lower() in {"/back", "/exit", "/quit", "q"}:
+    #         return
 
-        console.print(f"[dim][{agent_name}] Routing not connected yet. This is a stub for Milestone 2.[/dim]")
+    #     if agent_name == "Server Agent":
+    #         try:
+    #             _sa = ServerAgent()
+    #             response = _sa.chat(raw)
+    #         except Exception as e:
+    #             response = f"[Server Agent error: {e}]"
+    #     else:
+    #         response = f"[{agent_name}] Routing not connected yet."
+
+    #     console.print(f"\n[bold green]{agent_name}:[/bold green] {response}\n")
 
 
 # ── Home screen ────────────────────────────────────────────────────────────────
