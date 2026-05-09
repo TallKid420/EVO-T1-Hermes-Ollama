@@ -7,6 +7,7 @@ class BaseAgent(ABC):
         self.config = config        # stores the YAML config for this agent
         self.langchain_agent = LLMProvider(self.config)     # holds the actual LangSmith agent instance
         self.running = False        # used later for run_loop()
+        self._runtime = None
 
     def get_runtime(self):
         if self._runtime is None:

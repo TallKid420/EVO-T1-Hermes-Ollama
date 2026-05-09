@@ -12,7 +12,6 @@ from typing import Any, Dict
 
 from hermes.agents.base_agent import BaseAgent
 from hermes.executor.toolhandler import ToolLogger
-from hermes.executor.search_tools import SearchTools
 
 log = logging.getLogger(__name__)
 

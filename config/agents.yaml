@@ -3,7 +3,7 @@ system_agents:
     - name: server
       enabled: true
       type: server
-      model: "gpt-oss:120b"
+      model: "gpt-oss:20b"
       provider: "ollama"
       endpoint: "http://jcs-macbook-pro:11434"
       timeout_seconds: 20

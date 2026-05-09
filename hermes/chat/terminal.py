@@ -70,16 +70,14 @@ class HermesTerminal:
                 continue
 
             if msg.lower() == "/exit":
-                self.console.print(
-                    "[green]Exiting Hermes Terminal. Goodbye![/green]"
-                )
+                self.console.print("[green]Exiting Hermes Terminal. Goodbye![/green]")
                 break
 
             self._add_transcript("user", msg)
 
             try:
                 result = self.orchestrator.run(msg)
-                if result.get("error"):
+                if isinstance(result, dict) and result.get("error"):
                     self.console.print(
                         Panel(
                             f"[red]Connection Error:[/red] {result['message']}",
@@ -90,8 +88,13 @@ class HermesTerminal:
 
                 outcome = result["messages"][-1]
                 assistant_parts = outcome.content
+
                 if assistant_parts:
-                    assistant_text = assistant_parts if isinstance(assistant_parts, str) else "\n".join(assistant_parts)
+                    assistant_text = (
+                        assistant_parts 
+                        if isinstance(assistant_parts, str) 
+                        else "\n".join(assistant_parts)
+                    )
                     self._add_transcript("assistant", assistant_text)
                     self.console.print(f"[bold blue]Hermes >[/bold blue] {assistant_text}")
                 else:
