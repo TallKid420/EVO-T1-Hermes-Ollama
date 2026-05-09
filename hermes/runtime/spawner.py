@@ -28,6 +28,9 @@ class AgentSpawner:
             [a.config.name for a in self._server_agents],
         )
 
+    def spawn_child_agent(config_override):
+        pass
+
     def get_server_agents(self) -> list[BaseAgent]:
         return self._server_agents
 

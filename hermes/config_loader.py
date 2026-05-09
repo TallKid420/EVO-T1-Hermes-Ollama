@@ -21,8 +21,18 @@ class AgentConfig:
     schedule:        Optional[str]    = None   # cron string, for scheduler type
     trigger:         Optional[str]    = None   # event name, for event-driven
     enabled:         bool             = True
+
+    # Not Yaml Defined
+    agent_id: str | None = None
+    mailbox_id: str | None = None
+    parent_id: str | None = None
+    spawn_depth: int = 0
+
+    max_children: int = 5
+    max_spawn_depth: int = 3
+
     # extra keys from yaml (policy, allowed_commands, etc.) stored here
-    extra:           Dict[str, Any]   = field(default_factory=dict)
+    extra:           Dict[str, Any]
 
 
 def _agent_from_dict(entry: Dict[str, Any]) -> AgentConfig:
@@ -33,6 +43,13 @@ def _agent_from_dict(entry: Dict[str, Any]) -> AgentConfig:
         "schedule", "trigger", "enabled",
     }
     extra = {k: v for k, v in entry.items() if k not in known}
+
+    if not entry.get("name"):
+        raise ValueError("Agent config missing name")
+    
+    if entry.get("timeout_seconds", 0) <= 0:
+        raise ValueError("timeout_seconds must be > 0")
+
     return AgentConfig(
         name=entry["name"],
         type=entry["type"],
@@ -50,7 +67,7 @@ def _agent_from_dict(entry: Dict[str, Any]) -> AgentConfig:
     )
 
 
-def load_agents(path: str, raw) -> list[AgentConfig]:
+def load_agents(path: str) -> list[AgentConfig]:
     """Load custom agents from config/agents.yaml."""
     raw = load(path)
     return [

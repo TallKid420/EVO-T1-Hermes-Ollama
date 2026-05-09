@@ -2,6 +2,9 @@ from abc import ABC, abstractmethod
 from hermes.config_loader import AgentConfig
 from hermes.plugins.provider.llm_provider import LLMProvider
 
+import uuid
+import copy
+
 class BaseAgent(ABC):
     def __init__(self, config: AgentConfig):
         self.config = config        # stores the YAML config for this agent
@@ -9,11 +12,55 @@ class BaseAgent(ABC):
         self.running = False        # used later for run_loop()
         self._runtime = None
 
+        self.agent_id = config.agent_id or str(uuid.uuid4())
+        config.agent_id = self.agent_id
+        self.mailbox_id = config.mailbox_id or self.agent_id
+        config.mailbox_id = self.mailbox_id
+        
+        self.parent_id = config.parent_id
+        self.spawn_depth = config.spawn_depth
+        self.children: list[str] = []
+
+    def can_spawn_child(self) -> bool:
+        if (self.spawn_depth < self.config.max_spawn_depth 
+            and len(self.children) < self.config.max_children):
+            return True
+        else:
+            return False
+        
+    def spawn_context(self, overrides: dict | None = None) -> AgentConfig:
+        overrides = overrides or {}
+
+        if not self.agent_id:
+            raise ValueError("Agent ID Not Set")
+        
+        base = copy.deepcopy(self.config)
+
+        base.agent_id = str(uuid.uuid4())
+        base.parent_id = self.agent_id
+        base.spawn_depth = self.spawn_depth + 1
+        base.mailbox_id = base.agent_id
+
+        for k, v in overrides.items():
+            setattr(base, k, v)
+
+        return base
+    
+    def send_task(self, target_agent_id: str, payload: dict):
+        raise NotImplementedError("Send Task not implamented yet...")
+    
+    def fetch_mailbox(self):
+        raise NotImplementedError("Fetch Mailbox not implamented yet...")
+
     def get_runtime(self):
         if self._runtime is None:
             self._runtime = self._build_runtime()
 
         return self._runtime
+    
+    @abstractmethod
+    def _build_runtime(self):
+        pass
 
     @abstractmethod
     def run(self, input=None):
