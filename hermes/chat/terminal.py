@@ -53,7 +53,7 @@ class HermesTerminal:
     def _init(self):
         self.log.info("Starting Terminal")
         self.console.clear()
-        self._render_header("CHAT")
+        self._render_header(self.agent.config.type.upper())
 
     # ── Main loop ─────────────────────────────────────────────────────────────
     def run(self):
@@ -76,7 +76,7 @@ class HermesTerminal:
             self._add_transcript("user", msg)
 
             try:
-                result = self.orchestrator.run(msg)
+                result = self.agent.run(msg)
                 if isinstance(result, dict) and result.get("error"):
                     self.console.print(
                         Panel(
@@ -96,7 +96,7 @@ class HermesTerminal:
                         else "\n".join(assistant_parts)
                     )
                     self._add_transcript("assistant", assistant_text)
-                    self.console.print(f"[bold blue]Hermes >[/bold blue] {assistant_text}")
+                    self.console.print(f"[bold blue]{self.agent.config.name.upper()} >[/bold blue] {assistant_text}")
                 else:
                     self._add_transcript("assistant", "")
                     self.console.print("[bold red]Hermes did not return a response.[/bold red]")

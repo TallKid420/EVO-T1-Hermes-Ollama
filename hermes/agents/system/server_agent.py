@@ -13,22 +13,20 @@ ServerAgent — LLM-powered operator agent built on LangChain tool-calling.
 from __future__ import annotations
 
 import logging
-import re
 import shutil
 import subprocess
 from pathlib import Path
 from typing import Any, Dict, List, Optional
 
 import psutil
+import httpx
 import yaml
 
-from langchain_core.messages import HumanMessage, SystemMessage, ToolMessage, AIMessage
 from langchain_core.tools import tool
 
 from hermes.agents.base_agent import BaseAgent
 from hermes.agents.types.monitor_agent import MonitorAgent
 from hermes.config_loader import AgentConfig
-from hermes.plugins.provider.llm_provider import LLMProvider
 from hermes.services import task_service, event_service
 
 logger = logging.getLogger(__name__)
@@ -261,6 +259,7 @@ class ServerAgent(BaseAgent):
     def __init__(self, config: AgentConfig):
         super().__init__(config)
         self._monitor  = MonitorAgent.from_config()
+        self.agent = self._build_runtime()
 
     # ── BaseAgent interface ────────────────────────────────────────────────────
 
@@ -279,14 +278,50 @@ class ServerAgent(BaseAgent):
             model=llm,
             tools=self.TOOLS,
             checkpointer=InMemorySaver(),
-            system_prompt=self.config.system_prompt,
+            system_prompt=self.SYSTEM_PROMPT,
         )
 
     def run(self, input: Optional[str] = None) -> str:
         """Single-shot run — used by factory/scheduler."""
-        if input:
-            return self.chat(input)
-        return self.chat("Give me a full system status report.")
+        from hermes.executor.toolhandler import ToolLogger
+
+        input = input or "Give me a full system status report."
+
+        config: Dict[str, Any] = {
+            "configurable": {"thread_id": "system-default"},
+            "callbacks": [ToolLogger()],
+        }
+
+        payload = {"messages": [{"role": "user", "content": input}]}
+
+        try:
+            return self.agent.invoke(payload, config=config)
+        except httpx.ConnectError as exc:
+            logger.error("Connection Error: Failed to connect to server")
+            return {
+                "error": True,
+                "type": "connection_error",
+                "message": str(exc),
+            }
+        except Exception as exc:
+            err = str(exc)
+            if "error parsing tool call" not in err:
+                logger.exception(f"Error Caught: \n{err}")
+            logger.warning("Tool call parse error — retrying with strict prompt")
+            retry_payload = {
+                "messages": [
+                    {
+                        "role": "user",
+                        "content": (
+                            "Retry the previous request. "
+                            "If you call a tool, output exactly one tool call "
+                            "and provide only strict JSON arguments with no prose.\n\n"
+                            f"Original user request: {input}"
+                        ),
+                    }
+                ]
+            }
+            return self.agent.invoke(retry_payload, config=config)
 
     def run_loop(self):
         """Autonomous loop — called by daemon for proactive monitoring."""

@@ -5,6 +5,7 @@ from __future__ import annotations
 from config.manager import load
 from dataclasses import dataclass, field
 from typing import Any, Dict, Optional
+import uuid
 
 
 @dataclass
@@ -32,7 +33,7 @@ class AgentConfig:
     max_spawn_depth: int = 3
 
     # extra keys from yaml (policy, allowed_commands, etc.) stored here
-    extra:           Dict[str, Any]
+    extra: Dict[str, Any] = field(default_factory=dict)
 
 
 def _agent_from_dict(entry: Dict[str, Any]) -> AgentConfig:
@@ -40,7 +41,7 @@ def _agent_from_dict(entry: Dict[str, Any]) -> AgentConfig:
     known = {
         "name", "type", "provider", "endpoint", "timeout_seconds",
         "temperature", "model", "system_prompt", "tools",
-        "schedule", "trigger", "enabled",
+        "schedule", "trigger", "enabled", "agent_id", "mailbox_id"
     }
     extra = {k: v for k, v in entry.items() if k not in known}
 
@@ -49,6 +50,8 @@ def _agent_from_dict(entry: Dict[str, Any]) -> AgentConfig:
     
     if entry.get("timeout_seconds", 0) <= 0:
         raise ValueError("timeout_seconds must be > 0")
+    
+    agent_id = str(uuid.uuid5(uuid.NAMESPACE_DNS, entry["name"]))
 
     return AgentConfig(
         name=entry["name"],
@@ -63,6 +66,8 @@ def _agent_from_dict(entry: Dict[str, Any]) -> AgentConfig:
         schedule=entry.get("schedule"),
         trigger=entry.get("trigger"),
         enabled=entry.get("enabled", True),
+        agent_id=agent_id,
+        mailbox_id=agent_id,
         extra=extra,
     )
 
@@ -75,30 +80,51 @@ def load_agents(path: str) -> list[AgentConfig]:
         for entry in raw.get("custom_agents", {}).get("agents", [])
         if entry.get("enabled", True)
     ]
-    # agents = []
-    # for entry in raw.get("custom_agents", {}).get("agents", []):
-    #     if not entry.get("enabled", True):
-    #         continue
-    #     agents.append(_agent_from_dict(entry))
-    # return agents
 
 
 def load_system_agents(path: str) -> list[AgentConfig]:
     raw = load(path)
+    system = raw.get("system_agents", {})
+
+    # Support both list-of-dicts and name-keyed dict formats
+    if isinstance(system, list):
+        entries = system
+    elif isinstance(system, dict):
+        agents_list = system.get("agents")
+        if agents_list is not None:
+            # { agents: [...] } format
+            entries = agents_list
+        else:
+            # { name: {config}, name: {config} } flat dict format (wizard output)
+            entries = [{"name": k, **v} for k, v in system.items()]
+    else:
+        entries = []
+
     return [
         _agent_from_dict(entry)
-        for entry in raw.get("system_agents", {}).get("agents", [])
+        for entry in entries
         if entry.get("enabled", True)
     ]
-    # agents = []
-    # for entry in raw.get("system_agents", {}).get("agents", []):
-    #     if not entry.get("enabled", True):
-    #         continue
-    #     agents.append(_agent_from_dict(entry))
-    # return agents
 
-# # Quick test of loading agents
-# agents = load_system_agents("config/agents.yaml")
-# print(f"Loaded {len(agents)} system agents from config/agents.yaml:")
-# for agent in agents:
-#     print(f"Loaded agent config: {agent}")
+
+def load_custom_agents(path: str) -> list[AgentConfig]:
+    """Load custom agents from config/agents.yaml."""
+    raw = load(path)
+    custom = raw.get("custom_agents", {})
+
+    if isinstance(custom, list):
+        entries = custom
+    elif isinstance(custom, dict):
+        agents_list = custom.get("agents")
+        if agents_list is not None:
+            entries = agents_list
+        else:
+            entries = [{"name": k, **v} for k, v in custom.items()]
+    else:
+        entries = []
+
+    return [
+        _agent_from_dict(entry)
+        for entry in entries
+        if entry.get("enabled", True)
+    ]

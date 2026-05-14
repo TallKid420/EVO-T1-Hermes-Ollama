@@ -1,7 +1,7 @@
 """
 hermes/db/store.py
-Database access layer for Hermes. 
-Provides functions to create, read, update, and delete tasks, events, and actions. 
+Database access layer for Hermes.
+Provides functions to create, read, update, and delete tasks, events, and actions.
 Uses SQLite for storage and handles JSON serialization of payloads and results.
 """
 
@@ -14,17 +14,59 @@ from hermes.db.models import Event, Task, Action
 
 
 VALID_TASK_STATUSES = {
-    "queued", 
-    "running", 
-    "done", 
-    "failed", 
-    "blocked", 
-    "denied"
+    "queued",
+    "running",
+    "done",
+    "failed",
+    "blocked",
+    "denied",
 }
+
+MAILBOX_PENDING_STATUS = "pending"
 
 
 def _now() -> str:
     return datetime.utcnow().isoformat()
+
+
+def _table_columns(conn, table_name: str) -> set[str]:
+    rows = conn.execute(f"PRAGMA table_info({table_name})").fetchall()
+    return {r["name"] for r in rows}
+
+
+def _task_from_row(r) -> Task:
+    """Build Task model from row, tolerating optional/new columns."""
+    base_kwargs = dict(
+        id=r["id"],
+        created_at=r["created_at"],
+        updated_at=r["updated_at"],
+        status=r["status"],
+        priority=r["priority"],
+        type=r["type"],
+        title=r["title"],
+        payload=json.loads(r["payload_json"]),
+        result=json.loads(r["result_json"]) if r["result_json"] else None,
+        event_id=r["event_id"],
+        requires_approval=bool(r["requires_approval"]),
+        approved_at=r["approved_at"],
+        blocked_reason=r["blocked_reason"],
+        attempts=r["attempts"],
+    )
+
+    # Add lineage fields only if present in row
+    row_keys = set(r.keys())
+    if "parent_agent" in row_keys:
+        base_kwargs["parent_agent"] = r["parent_agent"]
+    if "spawn_depth" in row_keys:
+        base_kwargs["spawn_depth"] = 0 if r["spawn_depth"] is None else r["spawn_depth"]
+
+    # Backward compatibility if Task model hasn't been extended yet
+    try:
+        return Task(**base_kwargs)
+    except TypeError:
+        base_kwargs.pop("parent_agent", None)
+        base_kwargs.pop("spawn_depth", None)
+        return Task(**base_kwargs)
 
 
 # -------- Events --------
@@ -99,32 +141,64 @@ def create_task(
     payload: Dict[str, Any],
     event_id: Optional[int] = None,
     requires_approval: bool = False,
+    parent_agent: Optional[str] = None,
+    spawn_depth: int = 0,
 ) -> int:
     if status not in VALID_TASK_STATUSES:
         raise ValueError(f"Invalid task status: {status}")
 
     conn = connect()
     try:
-        cur = conn.execute(
-            """
-            INSERT INTO tasks(
-              created_at, updated_at, status, priority, type, title,
-              payload_json, result_json, event_id, requires_approval, approved_at, blocked_reason, attempts
+        task_cols = _table_columns(conn, "tasks")
+        has_lineage = {"parent_agent", "spawn_depth"}.issubset(task_cols)
+
+        if has_lineage:
+            cur = conn.execute(
+                """
+                INSERT INTO tasks(
+                  created_at, updated_at, status, priority, type, title,
+                  payload_json, result_json, event_id, requires_approval, approved_at, blocked_reason, attempts,
+                  parent_agent, spawn_depth
+                )
+                VALUES(?, ?, ?, ?, ?, ?, ?, NULL, ?, ?, NULL, NULL, 0, ?, ?)
+                """,
+                (
+                    _now(),
+                    _now(),
+                    status,
+                    priority,
+                    type_,
+                    title,
+                    json.dumps(payload, separators=(",", ":")),
+                    event_id,
+                    1 if requires_approval else 0,
+                    parent_agent,
+                    spawn_depth,
+                ),
             )
-            VALUES(?, ?, ?, ?, ?, ?, ?, NULL, ?, ?, NULL, NULL, 0)
-            """,
-            (
-                _now(),
-                _now(),
-                status,
-                priority,
-                type_,
-                title,
-                json.dumps(payload, separators=(",", ":")),
-                event_id,
-                1 if requires_approval else 0,
-            ),
-        )
+        else:
+            # Backward-compatible insert for pre-lineage schema
+            cur = conn.execute(
+                """
+                INSERT INTO tasks(
+                  created_at, updated_at, status, priority, type, title,
+                  payload_json, result_json, event_id, requires_approval, approved_at, blocked_reason, attempts
+                )
+                VALUES(?, ?, ?, ?, ?, ?, ?, NULL, ?, ?, NULL, NULL, 0)
+                """,
+                (
+                    _now(),
+                    _now(),
+                    status,
+                    priority,
+                    type_,
+                    title,
+                    json.dumps(payload, separators=(",", ":")),
+                    event_id,
+                    1 if requires_approval else 0,
+                ),
+            )
+
         conn.commit()
         return int(cur.lastrowid)
     finally:
@@ -150,27 +224,7 @@ def list_tasks(limit: int = 50, status: Optional[str] = None) -> List[Task]:
                 (limit,),
             ).fetchall()
 
-        out: List[Task] = []
-        for r in rows:
-            out.append(
-                Task(
-                    id=r["id"],
-                    created_at=r["created_at"],
-                    updated_at=r["updated_at"],
-                    status=r["status"],
-                    priority=r["priority"],
-                    type=r["type"],
-                    title=r["title"],
-                    payload=json.loads(r["payload_json"]),
-                    result=json.loads(r["result_json"]) if r["result_json"] else None,
-                    event_id=r["event_id"],
-                    requires_approval=bool(r["requires_approval"]),
-                    approved_at=r["approved_at"],
-                    blocked_reason=r["blocked_reason"],
-                    attempts=r["attempts"],
-                )
-            )
-        return out
+        return [_task_from_row(r) for r in rows]
     finally:
         conn.close()
 
@@ -181,22 +235,7 @@ def get_task(task_id: int) -> Optional[Task]:
         r = conn.execute("SELECT * FROM tasks WHERE id = ?", (task_id,)).fetchone()
         if not r:
             return None
-        return Task(
-            id=r["id"],
-            created_at=r["created_at"],
-            updated_at=r["updated_at"],
-            status=r["status"],
-            priority=r["priority"],
-            type=r["type"],
-            title=r["title"],
-            payload=json.loads(r["payload_json"]),
-            result=json.loads(r["result_json"]) if r["result_json"] else None,
-            event_id=r["event_id"],
-            requires_approval=bool(r["requires_approval"]),
-            approved_at=r["approved_at"],
-            blocked_reason=r["blocked_reason"],
-            attempts=r["attempts"],
-        )
+        return _task_from_row(r)
     finally:
         conn.close()
 
@@ -247,6 +286,7 @@ def set_task_result(task_id: int, result: Dict[str, Any]):
     finally:
         conn.close()
 
+
 def _update_task(query, params):
     conn = connect()
     try:
@@ -257,6 +297,7 @@ def _update_task(query, params):
     finally:
         conn.close()
 
+
 def approve_task(task_id: int):
     _update_task(
         """
@@ -266,6 +307,7 @@ def approve_task(task_id: int):
         """,
         (_now(), task_id),
     )
+
 
 def deny_task(task_id: int, reason: Optional[str] = None):
     _update_task(
@@ -318,24 +360,147 @@ def claim_next_queued_task() -> Optional[Task]:
         if claimed is None:
             return None
 
-        return Task(
-            id=claimed["id"],
-            created_at=claimed["created_at"],
-            updated_at=claimed["updated_at"],
-            status=claimed["status"],
-            priority=claimed["priority"],
-            type=claimed["type"],
-            title=claimed["title"],
-            payload=json.loads(claimed["payload_json"]),
-            result=json.loads(claimed["result_json"]) if claimed["result_json"] else None,
-            event_id=claimed["event_id"],
-            requires_approval=bool(claimed["requires_approval"]),
-            approved_at=claimed["approved_at"],
-            blocked_reason=claimed["blocked_reason"],
-            attempts=claimed["attempts"],
-        )
+        return _task_from_row(claimed)
     finally:
         conn.close()
+
+
+# -------- Agent Nodes --------
+
+def register_agent_node(
+    agent_id: str,
+    parent_id: Optional[str],
+    name: str,
+    type_: str,
+    depth: int,
+    mailbox_id: str,
+    status: str = "online",
+    meta: Optional[Dict[str, Any]] = None,
+) -> int:
+    """
+    Register or update an agent runtime node.
+    Requires `agent_nodes` table with columns:
+    (created_at, updated_at, agent_id, parent_id, name, type, depth, mailbox_id, status, meta_json)
+    and a UNIQUE constraint on agent_id for upsert behavior.
+    """
+    conn = connect()
+    try:
+        now = _now()
+        cur = conn.execute(
+            """
+            INSERT INTO agent_nodes(
+                created_at, updated_at, agent_id, parent_id, name, type, depth, mailbox_id, status, meta_json
+            )
+            VALUES(?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            ON CONFLICT(agent_id) DO UPDATE SET
+                updated_at = excluded.updated_at,
+                parent_id = excluded.parent_id,
+                name = excluded.name,
+                type = excluded.type,
+                depth = excluded.depth,
+                mailbox_id = excluded.mailbox_id,
+                status = excluded.status,
+                meta_json = excluded.meta_json
+            """,
+            (
+                now,
+                now,
+                agent_id,
+                parent_id,
+                name,
+                type_,
+                depth,
+                mailbox_id,
+                status,
+                json.dumps(meta or {}, separators=(",", ":")),
+            ),
+        )
+        conn.commit()
+        return int(cur.lastrowid)
+    finally:
+        conn.close()
+
+
+# -------- Mailbox --------
+
+def send_mailbox_message(
+    mailbox_id: str,
+    sender_agent_id: str,
+    message_type: str,
+    payload: Dict[str, Any],
+    task_id: Optional[int] = None,
+    parent_message_id: Optional[int] = None,
+    requires_ack: bool = False,
+) -> int:
+    """
+    Enqueue a mailbox message.
+    Requires `mailbox_messages` table with columns:
+    (created_at, mailbox_id, sender_agent_id, message_type, payload_json, task_id,
+     parent_message_id, status, requires_ack, acknowledged_at)
+    """
+    conn = connect()
+    try:
+        cur = conn.execute(
+            """
+            INSERT INTO mailbox_messages(
+                created_at, mailbox_id, sender_agent_id, message_type, payload_json,
+                task_id, parent_message_id, status, requires_ack, acknowledged_at
+            )
+            VALUES(?, ?, ?, ?, ?, ?, ?, ?, ?, NULL)
+            """,
+            (
+                _now(),
+                mailbox_id,
+                sender_agent_id,
+                message_type,
+                json.dumps(payload, separators=(",", ":")),
+                task_id,
+                parent_message_id,
+                MAILBOX_PENDING_STATUS,
+                1 if requires_ack else 0,
+            ),
+        )
+        conn.commit()
+        return int(cur.lastrowid)
+    finally:
+        conn.close()
+
+
+def get_pending_mailbox_messages(mailbox_id: str, limit: int = 50) -> List[Dict[str, Any]]:
+    conn = connect()
+    try:
+        rows = conn.execute(
+            """
+            SELECT *
+            FROM mailbox_messages
+            WHERE mailbox_id = ? AND status = ?
+            ORDER BY id ASC
+            LIMIT ?
+            """,
+            (mailbox_id, MAILBOX_PENDING_STATUS, limit),
+        ).fetchall()
+
+        out: List[Dict[str, Any]] = []
+        for r in rows:
+            out.append(
+                {
+                    "id": r["id"],
+                    "created_at": r["created_at"],
+                    "mailbox_id": r["mailbox_id"],
+                    "sender_agent_id": r["sender_agent_id"],
+                    "message_type": r["message_type"],
+                    "payload": json.loads(r["payload_json"]) if r["payload_json"] else {},
+                    "task_id": r["task_id"],
+                    "parent_message_id": r["parent_message_id"],
+                    "status": r["status"],
+                    "requires_ack": bool(r["requires_ack"]),
+                    "acknowledged_at": r["acknowledged_at"],
+                }
+            )
+        return out
+    finally:
+        conn.close()
+
 
 # -------- Actions (Audit Log) --------
 

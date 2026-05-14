@@ -1,84 +1,64 @@
 system_agents:
   agents:
-    - name: server
-      enabled: true
-      type: server
-      model: "gpt-oss:20b"
-      provider: "ollama"
-      endpoint: "http://jcs-macbook-pro:11434"
-      timeout_seconds: 20
-      command_policy: ops_safe
-      allowed_commands:
-        - systemctl status hermes
-        - journalctl -u hermes -n 50
-        - df -h
-        - free -h
-      approval_required_for_unapproved: true
-
-  planner:
-      model: "not-set"
-      provider: "not-set"
-      endpoint: "not-set"
-      timeout_seconds: 15
-      max_history: 5
-      allowed_actions:
-        - restart_service
-        - cleanup_cache
-        - send_notification
-        - verify_service
-      rules:
-        - "If risk_score >= 7, set requires_approval to true"
-        - "If the same action has failed more than 2 times in history, escalate instead of retrying"
-        - "Always respond in valid JSON only"
-        - "Never suggest actions outside the allowed_actions list"
-
+  - name: server
+    enabled: true
+    type: server
+    model: gpt-oss:20b
+    provider: ollama
+    endpoint: http://jcs-macbook-pro:11434
+    timeout_seconds: 20
+    command_policy: ops_safe
+    allowed_commands:
+    - systemctl status hermes
+    - journalctl -u hermes -n 50
+    - df -h
+    - free -h
+    approval_required_for_unapproved: true
+  # planner:
+  #   model: not-set
+  #   provider: not-set
+  #   endpoint: not-set
+  #   timeout_seconds: 15
+  #   max_history: 5
+  #   allowed_actions:
+  #   - restart_service
+  #   - cleanup_cache
+  #   - send_notification
+  #   - verify_service
+  #   rules:
+  #   - If risk_score >= 7, set requires_approval to true
+  #   - If the same action has failed more than 2 times in history, escalate instead
+  #     of retrying
+  #   - Always respond in valid JSON only
+  #   - Never suggest actions outside the allowed_actions list
+  
 custom_agents:
   agents:
-    - name: hermes-chat
-      type: chat
-      provider: ollama
-      endpoint: http://jcs-macbook-pro:11434
-      timeout_seconds: 20
-      temperature: 0
-      model: hermes3
-      system_prompt: "You are Hermes..."
-      enabled: true
-
-    - name: researcher-daily
-      type: researcher
-      provider: ollama
-      model: hermes3
-      tools: [Web Search, file_write]
-      timeout_seconds: 20
-      output_dir: /home/user/reports
-
-    - name: engineer-1
-      type: engineer
-      provider: ollama
-      model: hermes3
-      tools: [code_exec, git_read]
-      timeout_seconds: 20
-      enabled: true
-  # agent_name:
-  #   model: "example_model:version"
-  #   provider: "example_provider"
-  #   endpoint: "https://example.com/v1"
-  #   system_prompt: |
-  #     system prompt goes here
-  #   timeout_seconds: 20
-  #   allowed_actions:
-  #    - action_one
-  #    - action_two
-
-# groups:
-#   - name: system_agents
-#     description: "Agents responsible for core system functions like planning and routing."
-#     agents:
-#       - planner
-#       - router
-
-#   # - name: custom_agents
-#   #   description: "User-defined agents for specific tasks or integrations."
-#   #   agents:
-#   #     - exampe_agent
-  
+  - name: hermes-chat
+    type: chat
+    provider: ollama
+    endpoint: http://jcs-macbook-pro:11434
+    timeout_seconds: 20
+    temperature: 0
+    model: gpt-oss:20b
+    system_prompt: You are Hermes...
+    enabled: true
+  - name: researcher-daily
+    type: researcher
+    endpoint: http://jcs-macbook-pro:11434
+    provider: ollama
+    model: gpt-oss:20b
+    tools:
+    - Web Search
+    - file_write
+    timeout_seconds: 20
+    output_dir: /home/user/reports
+  - name: engineer-1
+    type: engineer
+    provider: ollama
+    model: hermes3
+    tools:
+    - code_exec
+    - git_read
+    timeout_seconds: 20
+    enabled: true

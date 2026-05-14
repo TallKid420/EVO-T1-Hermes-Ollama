@@ -3,6 +3,7 @@ import signal
 import sys
 import logging
 import threading
+import socket
 
 from hermes.db.migrations import migrate
 from hermes.daemon.loop import HermesDaemon
@@ -31,12 +32,30 @@ _stop_event = threading.Event()
 _flask_server = None 
 
 
-def _run_flask(host: str = "0.0.0.0", port: int = 5000):
+def _run_flask(host: str = "127.0.0.1", port: int = 5000):
     global _flask_server
     log.info("REST API starting on %s:%s", host, port)
     _flask_server = make_server(host, port, app)
     _flask_server.serve_forever()  # blocks until shutdown() is called on it
     log.info("REST API stopped")
+
+
+def _resolve_flask_port(host: str, configured_port: int) -> int:
+    candidate = max(1, min(65535, int(configured_port)))
+    max_attempts = 50
+
+    for _ in range(max_attempts):
+        with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as sock:
+            try:
+                sock.bind((host, candidate))
+                return candidate
+            except OSError:
+                log.warning("Configured API port %s on %s is in use; trying %s", candidate, host, candidate + 1)
+                candidate += 1
+                if candidate > 65535:
+                    break
+
+    raise RuntimeError(f"No available API port found for host {host} after {max_attempts} attempts")
 
 
 def _shutdown(reason: str = "unknown"):
@@ -74,6 +93,11 @@ def _run_daemon():
     services = services_cfg.get("managed_services", {})
     tick = daemon_cfg.get("tick_seconds", 10)
     dedup = daemon_cfg.get("dedup_repeat_seconds", 300)
+
+    api_cfg = daemon_cfg.get("api", {})
+    if api_cfg.get("enabled", True):
+        api_cfg["host"] = str(api_cfg.get("host", "127.0.0.1"))
+        api_cfg["port"] = _resolve_flask_port(api_cfg["host"], int(api_cfg.get("port", 5000)))
 
     watchers = [
         OllamaHealthWatcher(url="http://localhost:11434", timeout=5),
@@ -120,17 +144,13 @@ def _run_daemon():
     daemon_thread.start()
     log.info("Daemon thread started")
 
-    # Flask thread (optional)
     api_cfg = daemon_cfg.get("api", {})
     if api_cfg.get("enabled", True):
+        host = str(api_cfg.get("host", "127.0.0.1"))
+        port = int(api_cfg.get("port", 5000))
         flask_thread = threading.Thread(
             target=_run_flask,
-            kwargs={
-                #To expose it to the network use 0.0.0.0
-                #To set as only local use 127.0.0.1
-                "host": api_cfg.get("host", "0.0.0.0"),
-                "port": api_cfg.get("port", 5000),
-            },
+            kwargs={"host": host, "port": port},
             name="hermes-api",
             daemon=True,
         )

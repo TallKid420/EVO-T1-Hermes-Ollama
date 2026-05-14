@@ -9,8 +9,6 @@ PLUGINS_YAML = os.path.join(CONFIG_DIR, "plugins.yaml")
 def configs_exist() -> bool:
     return all(os.path.exists(p) for p in [SERVICES_YAML, AGENTS_YAML, PLUGINS_YAML])
 
-print(configs_exist())
-
 def load(path: str) -> dict:
     if os.path.exists(path):
         pass
@@ -29,9 +27,13 @@ def get_daemon_config() -> dict:
     """Reads daemon and API settings from services.yaml."""
     cfg = load(SERVICES_YAML)
     daemon = cfg.get("daemon", {})
-    # Ensure API section exists with defaults if not specified
-    api = daemon.setdefault("api", {})
-    api.setdefault("enabled", True)
-    api.setdefault("host", "127.0.0.1")
-    api.setdefault("port", 5000)
+    api = cfg.get("api", {})
+    flask = cfg.get("flask", {})
+    merged_api = dict(api)
+    merged_api.update(flask)
+    merged_api.update(daemon.get("api", {}))
+    merged_api.setdefault("enabled", True)
+    merged_api.setdefault("host", "127.0.0.1")
+    merged_api.setdefault("port", 5000)
+    daemon["api"] = merged_api
     return daemon

@@ -21,21 +21,36 @@ def load_plugins_config(path: str = "config/plugins.yaml") -> dict:
 
 class NotificationHandler:
     def __init__(self):
-        self.config = load_plugins_config()
+        self.notifiers = {}
+        try:
+            self.config = load_plugins_config()
+        except Exception as e:
+            self.config = {}
+            log.warning("Failed to load plugins config: %s", e)
+            return
+
         active = self.config.get("active", {}).get("communication")
         if not isinstance(active, dict):
-            raise ValueError("Missing or invalid notification config key: active.communication")
-        self.notifiers = {}
+            log.warning("Missing or invalid notification config key: active.communication")
+            return
+
         for name, settings in active.items():
-            if settings.get("system_notifications") and name in Notifiers_mapping:
-                self.notifiers[name] = Notifiers_mapping[name](
-                    self.config.get("plugins", {}).get(name, {})
-                )
+            if not isinstance(settings, dict):
+                continue
+            if not settings.get("system_notifications"):
+                continue
+            notifier_cls = Notifiers_mapping.get(name)
+            if not notifier_cls:
+                continue
+            try:
+                self.notifiers[name] = notifier_cls(self.config.get("plugins", {}).get(name, {}))
+            except Exception as e:
+                log.warning("Notifier '%s' initialization failed: %s", name, e)
 
 
     def send_notification(self, message: str, severity: str = "Severity.INFO"):
         if not self.notifiers:
-            log.warning("No active notifiers configured")
+            log.debug("No active notifiers configured")
             return
 
         for name, notifier in self.notifiers.items():

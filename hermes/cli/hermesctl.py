@@ -1,6 +1,7 @@
 import argparse
 import json
 import os
+import signal
 import subprocess
 import sys
 import time
@@ -8,10 +9,15 @@ import urllib.error
 import urllib.request
 import yaml
 
-from hermes.chat.terminal import HermesTerminal
+from config.manager import load, save, SERVICES_YAML, AGENTS_YAML
+from rich.console import Console
+from rich.panel import Panel
+from rich.prompt import Prompt, Confirm
+
 from hermes.db.migrations import migrate
 from hermes.db import store
 from hermes.db.worker import run_once
+from hermes.runtime.state import PID_FILE, get_daemon_pid, is_daemon_running
 
 
 # ---------------------------------------------------------------------------
@@ -24,8 +30,8 @@ _SEV_COLOR = {
     "info":     "\033[32m",   # green
 }
 _RESET = "\033[0m"
-_BOLD  = "\033[1m"
-
+_BOLD = "\033[1m"
+console = Console()
 
 def _c(text: str, color_code: str) -> str:
     """Wrap text in ANSI color if stdout is a TTY."""
@@ -60,11 +66,15 @@ def _daemon_base_url() -> str:
     host = "127.0.0.1"
     port = 5000
     try:
-        with open("config/services.yaml", "r", encoding="utf-8") as f:
-            cfg = yaml.safe_load(f) or {}
-        api = (cfg.get("daemon") or {}).get("api") or {}
-        host = str(api.get("host", host))
-        port = int(api.get("port", port))
+        cfg = load(SERVICES_YAML)
+        daemon = cfg.get("daemon", {}) if isinstance(cfg, dict) else {}
+        api = cfg.get("api", {}) if isinstance(cfg, dict) else {}
+        flask = cfg.get("flask", {}) if isinstance(cfg, dict) else {}
+        merged = dict(api)
+        merged.update(flask)
+        merged.update(daemon.get("api", {}))
+        host = str(merged.get("host", host))
+        port = int(merged.get("port", port))
     except Exception:
         pass
     if host in ("0.0.0.0", "::"):
@@ -86,16 +96,166 @@ def _daemon_ping(timeout: float = 1.5) -> tuple[bool, str]:
         return False, base
 
 
+def _port_in_use(host: str, port: int) -> bool:
+    import socket
+    try:
+        with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s:
+            s.settimeout(1)
+            return s.connect_ex((host, port)) == 0
+    except OSError:
+        return False
+
+
+def _ensure_valid_config() -> None:
+    services = load(SERVICES_YAML) if os.path.exists(SERVICES_YAML) else {}
+    agents = load(AGENTS_YAML) if os.path.exists(AGENTS_YAML) else {}
+
+    daemon = services.setdefault("daemon", {})
+    flask = services.setdefault("flask", {})
+
+    needs_wizard = False
+    if not os.path.exists(SERVICES_YAML) or not os.path.exists(AGENTS_YAML):
+        needs_wizard = True
+
+    planner_cfg = (agents.get("system_agents") or {}).get("planner") or {}
+    required_planner = ["provider", "endpoint", "model", "timeout_seconds", "max_history", "allowed_actions", "rules"]
+    if any(planner_cfg.get(k) in (None, "", "not-set") for k in required_planner):
+        needs_wizard = True
+
+    if flask.get("enabled") not in (True, False):
+        needs_wizard = True
+
+    if daemon.get("tick_seconds") is None or daemon.get("dedup_repeat_seconds") is None:
+        needs_wizard = True
+
+    if not needs_wizard:
+        return
+
+    console.print(Panel("[bold cyan]Hermes First-Run Wizard[/bold cyan]"))
+
+    endpoint = Prompt.ask("Ollama endpoint", default=planner_cfg.get("endpoint") or "http://127.0.0.1:11434").strip()
+    model = Prompt.ask("Default model", default=planner_cfg.get("model") or "llama3.1").strip()
+
+    flask_enabled = Confirm.ask("Enable Flask API?", default=bool(flask.get("enabled", True)))
+    flask_host = "127.0.0.1"
+    flask_port = int(flask.get("port", 5000) or 5000)
+    if flask_enabled:
+        flask_host = Prompt.ask("Flask host", default=str(flask.get("host") or "127.0.0.1")).strip() or "127.0.0.1"
+        while True:
+            raw_port = Prompt.ask("Flask port", default=str(flask_port)).strip()
+            try:
+                flask_port = int(raw_port)
+            except ValueError:
+                console.print("[yellow]Please enter a valid port.[/yellow]")
+                continue
+            if _port_in_use(flask_host, flask_port):
+                console.print(f"[yellow]Port {flask_port} is in use on {flask_host}. Choose another.[/yellow]")
+                continue
+            break
+
+    telegram_token = Prompt.ask("Telegram token (optional)", default="").strip()
+
+    daemon.setdefault("tick_seconds", 10)
+    daemon.setdefault("dedup_repeat_seconds", 300)
+    daemon["pid_file"] = "/tmp/hermes.pid"
+
+    services["flask"] = {
+        "enabled": flask_enabled,
+        "host": flask_host,
+        "port": flask_port,
+    }
+
+    system_agents = agents.setdefault("system_agents", {})
+    planner = system_agents.setdefault("planner", {})
+    planner["provider"] = "ollama"
+    planner["endpoint"] = endpoint
+    planner["model"] = model
+    planner["timeout_seconds"] = int(planner.get("timeout_seconds") or 20)
+    planner["max_history"] = int(planner.get("max_history") or 5)
+    planner.setdefault("allowed_actions", ["restart_service", "cleanup_cache", "send_notification", "verify_service"])
+    planner.setdefault("rules", [
+        "If risk_score >= 7, set requires_approval to true",
+        "If the same action has failed more than 2 times in history, escalate instead of retrying",
+        "Always respond in valid JSON only",
+        "Never suggest actions outside the allowed_actions list",
+    ])
+
+    if telegram_token:
+        plugins_path = os.path.join("config", "plugins.yaml")
+        plugins = load(plugins_path) if os.path.exists(plugins_path) else {}
+        plugins.setdefault("plugins", {})
+        plugins.setdefault("active", {}).setdefault("communication", {})
+        plugins["active"]["communication"].setdefault("telegram", {})
+        plugins["plugins"].setdefault("telegram", {})
+        plugins["plugins"]["telegram"]["token"] = telegram_token
+        save(plugins_path, plugins)
+
+    save(SERVICES_YAML, services)
+    save(AGENTS_YAML, agents)
+    console.print("[green]Configuration validated and saved.[/green]")
+
+
+def _ensure_flask_port_available() -> None:
+    cfg = load(SERVICES_YAML) if os.path.exists(SERVICES_YAML) else {}
+    if not isinstance(cfg, dict):
+        return
+
+    daemon = cfg.get("daemon", {}) or {}
+    flask = cfg.get("flask", {}) or {}
+    merged = dict(flask)
+    merged.update(daemon.get("api", {}))
+
+    if not bool(merged.get("enabled", True)):
+        return
+
+    host = str(merged.get("host", "127.0.0.1"))
+    if host in ("", "::"):
+        host = "127.0.0.1"
+    port = int(merged.get("port", 5000))
+
+    if not _port_in_use(host, port):
+        return
+
+    console.print(f"[yellow]Configured Flask port {port} on {host} is already in use.[/yellow]")
+    while True:
+        raw_port = Prompt.ask("Choose an alternative Flask port", default=str(port + 1)).strip()
+        try:
+            new_port = int(raw_port)
+        except ValueError:
+            console.print("[yellow]Please enter a valid port.[/yellow]")
+            continue
+        if _port_in_use(host, new_port):
+            console.print(f"[yellow]Port {new_port} is also in use on {host}.[/yellow]")
+            continue
+        cfg.setdefault("flask", {})
+        cfg["flask"]["enabled"] = True
+        cfg["flask"]["host"] = host
+        cfg["flask"]["port"] = new_port
+        save(SERVICES_YAML, cfg)
+        console.print(f"[green]Updated Flask port to {new_port} in {SERVICES_YAML}.[/green]")
+        return
+
+
+def _show_operator_console() -> None:
+    from main import main as tui_main
+    tui_main()
+
+
 # ---------------------------------------------------------------------------
 # hermesctl status
 # ---------------------------------------------------------------------------
 
 def cmd_status(args):
-    from hermes.agents.types.monitor_agent import MonitorAgent
+    pid = get_daemon_pid()
     running, base_url = _daemon_ping(timeout=1.2)
-    daemon_state = _c("RUNNING", "\033[32m") if running else _c("STOPPED", "\033[31m")
-    print(f"\n{_c('Hermesd', _BOLD)}  {daemon_state}  ({base_url})")
+    if pid:
+        state = _c("RUNNING", "\033[32m")
+        print(f"\n{_c('Hermesd', _BOLD)}  {state}  pid={pid}  ({base_url})")
+    else:
+        state = _c("STOPPED", "\033[31m")
+        print(f"\n{_c('Hermesd', _BOLD)}  {state}  ({PID_FILE})")
 
+    from hermes.agents.types.monitor_agent import MonitorAgent
     agent = MonitorAgent.from_config()
     status = agent.get_status()
 
@@ -215,10 +375,14 @@ def cmd_tasks_queue(args):
 
 
 def cmd_start(args):
-    running, base_url = _daemon_ping(timeout=1.2)
-    if running:
-        print(f"Hermesd is already running at {base_url}")
+    _ensure_valid_config()
+    _ensure_flask_port_available()
+    if is_daemon_running():
+        pid = get_daemon_pid()
+        print(f"Hermesd already running (pid={pid}). Attaching console.")
+        _show_operator_console()
         return
+
     creationflags = subprocess.CREATE_NEW_PROCESS_GROUP if os.name == "nt" else 0
     kwargs = {
         "stdout": subprocess.DEVNULL,
@@ -232,18 +396,48 @@ def cmd_start(args):
     env = os.environ.copy()
     env["HERMES_TERMINAL"] = "0"
     subprocess.Popen([sys.executable, "hermesd.py"], env=env, **kwargs)
+
     for _ in range(30):
         time.sleep(0.2)
-        running, base_url = _daemon_ping(timeout=0.8)
-        if running:
-            print(f"Hermesd started at {base_url}")
+        if is_daemon_running():
+            print(f"Hermesd started (pid={get_daemon_pid()}).")
+            _show_operator_console()
             return
-    print("Hermesd start requested, but status endpoint is not responding yet.")
+
+    print("Hermesd start requested, but PID file was not observed yet.")
 
 
-# ---------------------------------------------------------------------------
-# hermesctl logs
-# ---------------------------------------------------------------------------
+def cmd_stop(_args):
+    pid = get_daemon_pid()
+    if not pid:
+        print("Hermesd is not running.")
+        return
+    try:
+        os.kill(pid, signal.SIGTERM)
+        print(f"Sent SIGTERM to Hermesd pid={pid}.")
+    except ProcessLookupError:
+        print("Process no longer exists.")
+        return
+    except Exception as exc:
+        print(f"Failed to stop daemon: {exc}")
+        return
+
+    for _ in range(30):
+        time.sleep(0.2)
+        if not is_daemon_running():
+            print("Hermesd stopped.")
+            return
+
+    print("Stop signal sent, but daemon still appears to be running.")
+
+
+def cmd_attach(_args):
+    if not is_daemon_running():
+        print("Hermesd is not running. Start it first.")
+        return
+    _show_operator_console()
+
+
 
 def cmd_logs(args):
     """Read hermes.log — tail the last N lines, with optional keyword filter."""
@@ -365,7 +559,7 @@ def cmd_db_reset(_args):
     print("OK: database re-initialized")
 
 def cmd_chat(args):
-    HermesTerminal().run()
+    _show_operator_console()
 
 
 # ---------------------------------------------------------------------------
@@ -379,8 +573,14 @@ def build_parser():
     st = sub.add_parser("status", help="Live system health snapshot")
     st.set_defaults(func=cmd_status)
 
-    dm = sub.add_parser("start", help="Start hermesd")
+    dm = sub.add_parser("start", help="Start hermesd then attach console")
     dm.set_defaults(func=cmd_start)
+
+    sp = sub.add_parser("stop", help="Stop hermesd")
+    sp.set_defaults(func=cmd_stop)
+
+    at = sub.add_parser("attach", help="Attach operator console to running daemon")
+    at.set_defaults(func=cmd_attach)
 
     lg = sub.add_parser("logs", help="Read the Hermes log file")
     lg.add_argument("-n", "--lines", type=int, default=50, help="Number of lines to show (default 50)")

@@ -1,22 +1,22 @@
 from abc import ABC, abstractmethod
 from hermes.config_loader import AgentConfig
-from hermes.plugins.provider.llm_provider import LLMProvider
+from typing import Any, Optional
 
+import logging
 import uuid
 import copy
 
 class BaseAgent(ABC):
     def __init__(self, config: AgentConfig):
         self.config = config        # stores the YAML config for this agent
-        self.langchain_agent = LLMProvider(self.config)     # holds the actual LangSmith agent instance
         self.running = False        # used later for run_loop()
         self._runtime = None
-
+        
         self.agent_id = config.agent_id or str(uuid.uuid4())
         config.agent_id = self.agent_id
         self.mailbox_id = config.mailbox_id or self.agent_id
         config.mailbox_id = self.mailbox_id
-        
+
         self.parent_id = config.parent_id
         self.spawn_depth = config.spawn_depth
         self.children: list[str] = []
@@ -41,7 +41,16 @@ class BaseAgent(ABC):
         base.spawn_depth = self.spawn_depth + 1
         base.mailbox_id = base.agent_id
 
+        _RESERVED = {
+            "agent_id",
+            "mailbox_id",
+            "parent_id",
+            "spawn_depth",
+        }
+
         for k, v in overrides.items():
+            if k in _RESERVED:
+                continue
             setattr(base, k, v)
 
         return base
@@ -57,6 +66,11 @@ class BaseAgent(ABC):
             self._runtime = self._build_runtime()
 
         return self._runtime
+    
+    @staticmethod
+    def log(value: Any, level: str = "info"):
+        logger = logging.getLogger(__name__)
+        getattr(logger, level, logger.info)(value)
     
     @abstractmethod
     def _build_runtime(self):

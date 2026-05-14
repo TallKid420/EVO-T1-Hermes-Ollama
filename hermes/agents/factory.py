@@ -2,12 +2,11 @@
 hermes/agents/factory.py
 """
 from __future__ import annotations
-from typing import Optional
-from config.manager import load
 from hermes.agents.registry import AGENT_REGISTRY
 from hermes.config_loader import AgentConfig
 
 import logging
+import uuid
 
 log = logging.getLogger(__name__)
 
@@ -19,7 +18,7 @@ class AgentFactory:
     
     @staticmethod
     def spawn(config: AgentConfig):
-        key = config.name
+        key = config.agent_id
 
         if key in AgentFactory._CACHE:
             return AgentFactory._CACHE[key]
@@ -49,10 +48,7 @@ class AgentFactory:
         return agents
 
     @classmethod
-    def spawn_all_custom(cls, config_path: Optional[str] = None) -> list:
-        """Load and spawn all enabled custom agents."""
-        path = config_path or DEFAULT_CONFIG_PATH
-        configs = load(path)
+    def spawn_custom(cls, configs: list[AgentConfig]) -> list:
         agents  = []
         for config in configs:
             try:
@@ -60,13 +56,3 @@ class AgentFactory:
             except Exception as e:
                 log.error("Failed to spawn custom agent '%s': %s", config.name, e)
         return agents
-    
-# for config in configs:
-#     agent = AgentFactory.spawn(config)
-#     print(f"Spawned agent: {agent.config.name} of type {agent.config.type}")
-    
-# # if __name__ == "__main__":
-# #     # test the factory
-# #     config = {"type": "chat"}
-# #     agent = AgentFactory.spawn(config)
-# #     print(agent.run())

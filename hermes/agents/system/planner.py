@@ -1,7 +1,7 @@
 import json
 import yaml
 from typing import Dict, Any, Optional, List
-from hermes.plugins.provider.llm_provider import ChatProvider
+from langchain_ollama import ChatOllama
 
 
 def load_planner_config(path: str = "config/agents.yaml") -> Dict[str, Any]:
@@ -13,8 +13,6 @@ def load_planner_config(path: str = "config/agents.yaml") -> Dict[str, Any]:
     return planner_cfg
 
 
-# Survival reflexes — LLM is NOT consulted for these.
-# These are "brainstem" rules: if the system can't heal itself, nothing else matters.
 SURVIVAL_OVERRIDES = {
     "service_unhealthy": lambda payload: {
         "action": "restart_service",
@@ -31,31 +29,34 @@ class Planner:
     def __init__(self, config_path: str = "config/agents.yaml"):
         cfg = load_planner_config(config_path)
         required_fields = [
-            "max_history",
-            "model",
-            "provider",
-            "endpoint",
-            "timeout_seconds",
-            "allowed_actions",
-            "rules",
+            "max_history", "model", "provider", "endpoint",
+            "timeout_seconds", "allowed_actions", "rules",
         ]
-        missing = [field for field in required_fields if field not in cfg]
+        missing = [f for f in required_fields if f not in cfg]
         if missing:
             raise ValueError(f"Missing required planner config field(s): {missing}")
 
-        self.max_history = int(cfg["max_history"])
-        self.model = str(cfg["model"])
-        self.provider = str(cfg["provider"])
-        self.endpoint = str(cfg["endpoint"])
-        self.timeout_seconds = int(cfg["timeout_seconds"])
-        self.allowed_actions = list(cfg["allowed_actions"])
-        self.rules = list(cfg["rules"])
-        self.cfg = cfg
+        self.max_history      = int(cfg["max_history"])
+        self.model            = str(cfg["model"])
+        self.provider         = str(cfg["provider"])
+        self.endpoint         = str(cfg["endpoint"])
+        self.timeout_seconds  = int(cfg["timeout_seconds"])
+        self.allowed_actions  = list(cfg["allowed_actions"])
+        self.rules            = list(cfg["rules"])
+        self.cfg              = cfg
 
         if not self.allowed_actions:
             raise ValueError("planner.allowed_actions cannot be empty")
         if not self.rules:
             raise ValueError("planner.rules cannot be empty")
+
+        # Build LLM once — reused on every plan() call
+        self._llm = ChatOllama(
+            model=self.model,
+            base_url=self.endpoint,
+            temperature=0,          # deterministic plans
+            timeout=self.timeout_seconds,
+        )
 
     def _normalize_plan(self, raw_plan: Dict[str, Any], event_message: str, payload: Dict[str, Any]) -> Dict[str, Any]:
         plan = dict(raw_plan)
@@ -98,28 +99,20 @@ class Planner:
     ) -> Dict[str, Any]:
         action_history = action_history or []
         event_type = event.get("type", "")
-        payload = event.get("payload", {})
+        payload    = event.get("payload", {})
 
-        # --- Survival layer (brainstem) ---
-        # Only fires when the system MUST act to stay alive.
-        # LLM is bypassed entirely for these.
+        # --- Survival layer ---
         if event_type in SURVIVAL_OVERRIDES:
             override = SURVIVAL_OVERRIDES[event_type](payload)
-            # Validate the override has required args before returning
             if override.get("action") == "restart_service":
-                if not override["action_args"].get("service"):
-                    # No service name = can't act, fall through to LLM
-                    pass
-                else:
+                if override["action_args"].get("service"):
                     return override
 
-        # --- LLM layer (brain) ---
-        # Everything else goes to the Planner model.
+        # --- LLM layer ---
         allowed_actions_text = ", ".join(self.allowed_actions)
         rules_text = "\n".join(
-            f"{idx}. {rule}" for idx, rule in enumerate(self.rules, start=1)
+            f"{i}. {rule}" for i, rule in enumerate(self.rules, start=1)
         )
-
         history_text = "None" if not action_history else "\n".join(
             f"- [{h['timestamp']}] Action: {h['action']} → Result: {h['result']}"
             for h in action_history[-self.max_history:]
@@ -158,17 +151,13 @@ payload: {json.dumps(payload)}
 """
 
         try:
-            raw_plan = ChatProvider().send_system_message(
-                prompt=prompt,
-                cfg=self.cfg,
-                format="json",
-                stream=False,
-            )
+            response = self._llm.invoke(prompt)
+            raw_plan = json.loads(response.content)
             if not isinstance(raw_plan, dict):
-                raise ValueError(f"Planner provider returned non-dict payload: {type(raw_plan).__name__}")
-            plan = self._normalize_plan(raw_plan, event.get("message", ""), payload)
+                raise ValueError(f"Planner returned non-dict: {type(raw_plan).__name__}")
+            return self._normalize_plan(raw_plan, event.get("message", ""), payload)
+
         except Exception as e:
-            # LLM failed — fall back to notify so at least you know
             return {
                 "action": "send_notification",
                 "action_args": {"message": f"Planner LLM failed: {e}. Event: {event.get('message')}"},
@@ -177,5 +166,3 @@ payload: {json.dumps(payload)}
                 "risk_score": 1,
                 "_fallback": True,
             }
-
-        return plan

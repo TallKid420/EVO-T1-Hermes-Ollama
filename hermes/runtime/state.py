@@ -4,14 +4,13 @@ Daemon PID lock and status detection.
 """
 from pathlib import Path
 import os
+import tempfile
 
-PROJECT_ROOT=Path(__file__).resolve().parents[2]
-RUNTIME_DIR = PROJECT_ROOT / "runtime"
-PID_FILE = RUNTIME_DIR / "hermesd.pid"
+PID_FILE = Path("/tmp/hermes.pid") if os.name != "nt" else Path(tempfile.gettempdir()) / "hermes.pid"
 
 
 def write_pid():
-    RUNTIME_DIR.mkdir(parents=True, exist_ok=True)
+    PID_FILE.parent.mkdir(parents=True, exist_ok=True)
     PID_FILE.write_text(str(os.getpid()), encoding="utf-8")
 
 

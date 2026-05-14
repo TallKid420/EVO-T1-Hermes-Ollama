@@ -5,9 +5,9 @@ active:
       output: false
       system_notifications: false
     telegram:
-      input: true
-      output: true
-      system_notifications: true
+      input: false
+      output: false
+      system_notifications: false
     gmail:
       input: false
       output: false
@@ -16,26 +16,22 @@ active:
       input: false
       output: false
       system_notifications: false
-
 plugins:
   telegram:
-    token: "your-telegram-bot-token"
-    chat_id: "your-telegram-chat-id"
+    token: your-telegram-bot-token
+    chat_id: your-telegram-chat-id
     allowed_user_ids:
-      - 123456789
+    - 123456789
     approvals:
       enabled: true
-
   gmail:
-    email: "your-email@gmail.com"
-    password: "your-email-password"
-  
+    email: your-email@gmail.com
+    password: your-email-password
   whatsapp:
-    phone_number: "your-whatsapp-phone-number"
-    api_key: "your-whatsapp-api-key"
-
+    phone_number: your-whatsapp-phone-number
+    api_key: your-whatsapp-api-key
   sms:
-    account_sid: "your-twilio-account-sid"
-    auth_token: "your-twilio-auth-token"
-    from_number: "+1234567890"
-    to_number: "+0987654321"
+    account_sid: your-twilio-account-sid
+    auth_token: your-twilio-auth-token
+    from_number: '+1234567890'
+    to_number: +0987654321
